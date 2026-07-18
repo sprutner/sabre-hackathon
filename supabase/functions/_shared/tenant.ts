@@ -61,21 +61,26 @@ export async function getTripContext(tripId: string) {
   const trips = await sel(`trips?select=uuid,trip_name,location,start_date,end_date,trip_type&uuid=eq.${tripId}&limit=1`);
   if (!trips.length) return { found: false, reason: "no such trip" };
   const trip = trips[0];
-  const [mem, lodging] = await Promise.all([
+  const [mem, lodging, activities] = await Promise.all([
     members(tripId),
     sel(`accommodations?select=name,physical_address,check_in,check_out,bedrooms&trip_uuid=eq.${tripId}&deleted=is.false`),
+    sel(`activities?select=uuid,name,start_time,end_time,location,confirmed,description&trip_uuid=eq.${tripId}&deleted=is.false&order=start_time.asc`),
   ]);
   const names = mem.map((m) => m.first_name_only);
+  const actLine = activities.length
+    ? ` Itinerary: ${activities.map((a: any) => `${a.name}${a.start_time ? ` on ${a.start_time.slice(0, 16).replace("T", " at ")}` : ""}`).join("; ")}.`
+    : "";
   return {
     found: true,
     trip_id: trip.uuid,
     speakable_summary:
       `${trip.trip_name} — a ${trip.trip_type ?? "group"} trip to ${trip.location} from ${trip.start_date?.slice(0, 10)} to ` +
       `${trip.end_date?.slice(0, 10)}, ${names.length} traveler${names.length === 1 ? "" : "s"}${names.length ? ` (${names.join(", ")})` : ""}. ` +
-      `Lodging: ${lodging.length ? lodging.map((l: any) => l.name ?? "unnamed place").join("; ") : "no lodging on file"}.`,
+      `Lodging: ${lodging.length ? lodging.map((l: any) => l.name ?? "unnamed place").join("; ") : "no lodging on file"}.` + actLine,
     members: mem.map((m) => ({ first_name_only: m.first_name_only })),
     lodging,
     lodging_status: lodging.length ? "booked" : "none_on_file",
+    activities: activities.map((a: any) => ({ activity_uuid: a.uuid, name: a.name, start_time: a.start_time, end_time: a.end_time, confirmed: a.confirmed })),
   };
 }
 

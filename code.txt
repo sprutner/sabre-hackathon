@@ -1,0 +1,46 @@
+# Sabre MCP Skills Server Skill Guide
+
+Use this guide when a coding agent connects to the skills-based Sabre MCP Server and lets skills guide each business tool call.
+
+## When to use this skill
+
+- You are connecting an AI client or agent to the skills-based Sabre MCP Server.
+- You want business tools with rich input schemas, guided by skills delivered as MCP resources.
+- You need step-by-step guidance loaded before each tool call in a workflow.
+
+## Server and authentication
+
+- Skills-based MCP Server endpoint: https://mcp2.cert.sabre.com/mcp
+- Transport type: Streamable HTTP
+- Every request requires a valid OAuth 2.0 access token in the `Authorization: Bearer <token>` header.
+- MCP Server access requires the correct security attribute on your PCC/EPR. Without it, the connection fails with a 403 Forbidden error.
+
+## Implementation workflow
+
+1. Authenticate and obtain an OAuth 2.0 access token.
+2. Connect your client to https://mcp2.cert.sabre.com/mcp using Streamable HTTP and the Bearer token header.
+3. Call `use-sabre-cert-mcp-server-guidelines` once to load the server guidelines.
+4. Read `skill://index.json` to browse the available skills.
+5. Call `read-resources` with the skill's `SKILL.md` and its example `assets` before calling the matching business tool.
+6. Build the payload from the skill templates and the tool's input schema, then call the business tool (for example, `search-hotels`).
+7. Repeat the load-skill-then-call-tool sequence before each tool in a multi-step workflow.
+
+## Required inputs
+
+- OAuth 2.0 access token
+- PCC/EPR with the MCP Server security attribute
+- Security attributes for each downstream Sabre API the business tools invoke
+- The `SKILL.md` and `assets` for the skill that matches the target business tool
+
+## Common mistakes
+
+- Connecting without a valid OAuth 2.0 token, resulting in a 403 Forbidden error
+- Calling a business tool before loading its skill with `read-resources`
+- Skipping `use-sabre-cert-mcp-server-guidelines` before discovering skills
+- Reusing a single loaded skill across every step instead of loading the skill for each tool
+- Selecting the wrong transport type instead of Streamable HTTP
+
+## Related docs
+
+- Sabre MCP Server setup and configuration: https://developer.sabre.com/product-collection/hackathon-2026/v1/help-documentation/sabre-mcp-setup
+- Sabre MCP Server tool API reference (MCP - Skills tab): https://developer.sabre.com/product-collection/hackathon-2026/v1/help-documentation/sabre-mcp-tool-reference

@@ -1,0 +1,58 @@
+# Sabre MCP Tools Server Skill Guide
+
+Use this guide when a coding agent connects to the tools-based Sabre MCP Server and calls its tools to complete travel workflows.
+
+## When to use this skill
+
+- You are connecting an AI client or agent to the tools-based Sabre MCP Server.
+- You want predefined multi-step workflows for air or hotel shopping and booking.
+- You need direct API execution or on-demand OpenAPI specs during a session.
+
+## Server and authentication
+
+- Tools-based MCP Server endpoint: https://mcp.cert.sabre.com/mcp
+- Transport type: Streamable HTTP
+- Every request requires a valid OAuth 2.0 access token in the `Authorization: Bearer <token>` header.
+- MCP Server access requires the correct security attribute on your PCC/EPR. Without it, the connection fails with a 403 Forbidden error.
+
+## Tool categories
+
+The server exposes three categories of tools:
+
+1. Workflow tools — predefined, multi-step API call sequences:
+   - `SearchAndBookFlightWorkflow` — search for flights and create a booking.
+   - `SearchAndBookHotelWorkflow` — search for hotel properties and create a booking.
+   - `FlightIssuedTicketManagementWorkflow` — check ticket status or void already issued tickets.
+2. API execution tools:
+   - `callSabreAPI` — a generic tool that sends raw requests to specific Sabre APIs.
+3. OpenAPI spec tools — return the full OpenAPI spec for a domain so an LLM can learn its structure, parameters, and schemas at runtime:
+   - `FlightShopAPI_OpenAPISpec`, `FlightReshopAPI_OpenAPISpec`, `HotelsSearchAPI_OpenAPISpec`, `HotelPriceCheckAPI_OpenAPISpec`, `HotelRatesAPI_OpenAPISpec`, `BookingManagement_OpenAPISpec`.
+
+## Implementation workflow
+
+1. Authenticate and obtain an OAuth 2.0 access token.
+2. Connect your client to https://mcp.cert.sabre.com/mcp using Streamable HTTP and the Bearer token header.
+3. List the available tools to confirm the connection and discover tool names.
+4. For a complete task, call the matching workflow tool (for example, `SearchAndBookHotelWorkflow`).
+5. For a single API call, use `callSabreAPI`, or load the relevant OpenAPI spec tool first to learn the schema.
+6. Confirm downstream API security attributes are provisioned for the underlying Sabre APIs.
+
+## Required inputs
+
+- OAuth 2.0 access token
+- PCC/EPR with the MCP Server security attribute
+- Security attributes for each downstream Sabre API the tools invoke
+- Task-specific inputs (origin, destination, dates, traveler details) for the selected tool
+
+## Common mistakes
+
+- Connecting without a valid OAuth 2.0 token, resulting in a 403 Forbidden error
+- Missing the MCP Server security attribute on the PCC/EPR
+- Calling a workflow tool without the downstream API security attributes provisioned
+- Using `callSabreAPI` without first loading the relevant OpenAPI spec to learn the schema
+- Selecting the wrong transport type instead of Streamable HTTP
+
+## Related docs
+
+- Sabre MCP Server setup and configuration: https://developer.sabre.com/product-collection/hackathon-2026/v1/help-documentation/sabre-mcp-setup
+- Sabre MCP Server tool API reference: https://developer.sabre.com/product-collection/hackathon-2026/v1/help-documentation/sabre-mcp-tool-reference
