@@ -24,7 +24,7 @@ caller ⇄ PSTN ⇄ Vocal Bridge (voice layer, Avi prompt)
                           every dispatch → actions row (live flag is HONEST — SIM badges render from it)
         Sabre CERT ⇄ direct REST (pipe B, live) or Anthropic MCP connector (pipe A)
         AvoSquado  ⇄ avosquado-mcp (3-tool tenant MCP contract; any tenant implementing it is onboardable)
-        dashboard  ⇄ desk-data function (polls calls / actions / queue)
+        dashboard  ⇄ `dashboard` fn (HTML, LIVE/SIM chips) + `desk-data` fn (JSON: calls / actions / queue)
 ```
 
 Two products, cleanly separable:
@@ -56,6 +56,8 @@ npm install                                  # node 20+ (machine has v24)
 npx tsx nightdesk/scripts/phase1-search.ts 2026-07-19 rest   # live Sabre search
 npx tsx avosquado-mcp/src/server.ts                          # tenant MCP on :8788/mcp
 npx tsx nightdesk/scripts/phase2-verify.ts <phone>           # contract check, both pipes
+npx tsx nightdesk/scripts/seed.ts                            # idempotent nightdesk seed (2 tenants, Dana + Marcus)
+npx tsx nightdesk/scripts/phase3-convo.ts [tenant] [model]   # 4-turn convo vs deployed agent fn; prints TTFT + tool trail
 
 # Edge functions (the real runtime):
 supabase functions deploy <fn> --project-ref ppapponwxvfnmpcatyju --no-verify-jwt
@@ -65,6 +67,9 @@ curl -X POST https://ppapponwxvfnmpcatyju.supabase.co/functions/v1/migrate \
 curl -X POST https://ppapponwxvfnmpcatyju.supabase.co/functions/v1/agent \
   -H "Authorization: Bearer $TENANT_MCP_SHARED_SECRET" -H "Content-Type: application/json" \
   -d '{"tenant_id":"<uuid>","phone":"4155550100","utterance":"my flight got cancelled"}'
+
+# Dashboard (ugly-but-truthful; LIVE/SIM chips render from actions.live):
+open "https://ppapponwxvfnmpcatyju.supabase.co/functions/v1/dashboard?t=$TENANT_MCP_SHARED_SECRET"
 ```
 
 One commit per phase (`phase-N: …`) — the git log is part of the spike report.
