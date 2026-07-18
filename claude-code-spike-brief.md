@@ -77,6 +77,20 @@ avosquado-mcp exposes exactly three tools against the DEV db:
 - `get_group_state(trip_id)` → `{confirmed, unconfirmed, pairs/room_config if derivable}`
 First names only in member payloads. Any tenant implementing these three tools is onboardable — that sentence is the product claim; make the code make it true.
 
+## Canonical model (speakable-first — ALL pipes return these; suppliers/tenants map IN at the boundary)
+Put in `/nightdesk/src/model.ts`; both pipes and the tenant contract return these shapes. Rules: (1) full supplier payloads NEVER enter the LLM context — cache by `ref` in the `offers` table and resolve server-side when a booking tool fires; (2) every object carries a pre-rendered `say` one-liner computed at the pipe, so the model reads speech, not schemas; (3) money = decimal string + currency, humanized only in `say`; (4) vocabulary is NDC-aligned: search yields **offers**, transacting creates **orders**.
+```ts
+type Money = { amount: string; currency: string };
+type FlightOffer = { ref: string; departIso: string; arriveIso: string; airports: [string,string];
+  carrier: string; stops: number; priceDelta?: Money; total?: Money; say: string };
+type HotelOffer = { ref: string; property: string; perRoomNight: Money; total: Money;
+  refundable: boolean; say: string };
+type Reservation = { id: string; source: "sabre"|"tenant"; adapterRef: string; tripName?: string;
+  destination: string; startIso: string; endIso: string; travelers: {firstName: string}[];
+  groupSize: number; rooms?: number; say: string };
+type OrderResult = { orderRef: string; status: "confirmed"|"held"|"simulated"; say: string };
+```
+
 ## Phase 0 — Sabre handshake
 Mint OAuth v2 token (print TTL). Connect to SABRE_MCP_URL (Streamable HTTP, Bearer). List tools; print names **verbatim** into SPIKE_REPORT. On 403: STOP, dump headers/body, tell Seth — that's a PCC/EPR provisioning issue for Discord, not a code problem.
 
@@ -114,6 +128,7 @@ create table if not exists calls (id uuid primary key default gen_random_uuid(),
 create table if not exists actions (id uuid primary key default gen_random_uuid(), call_id uuid, type text,
   payload jsonb, result jsonb, live boolean default true, created_at timestamptz default now());
 create table if not exists holds (id uuid primary key default gen_random_uuid(), reservation_id uuid, kind text, details jsonb, expires_at timestamptz);
+create table if not exists offers (ref text primary key, kind text, say text, supplier_payload jsonb, created_at timestamptz default now());
 create table if not exists queue (id uuid primary key default gen_random_uuid(), tenant_id uuid, call_id uuid,
   reason text, context jsonb, status text default 'open', promised_by text);
 ```
