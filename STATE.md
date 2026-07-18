@@ -85,6 +85,7 @@ outbound trigger → VB call API → same brain, outbound prompt section
   - **Env:** Node v24.1.0, tsx 4.23.1. Repo `sabre-hackathon` confirmed for spike. `TENANT_MCP_SHARED_SECRET` generated. `.env` gitignored in first commit.
   - **Thursday outcomes / Q9 (Damir):** not answered in intake — still open.
   - **skitrip-dev security note (dev hygiene, not tonight's job):** 13 tables have RLS disabled (incl. `trip_users`, `accommodations`, `outreach_*`); Supabase advisor flags them as anon-writable. Recorded for later remediation.
+- **Fri/Sat (Phase 0 — Sabre handshake): PASS.** No 403 — Q1 RESOLVED, Sabre MCP reachable. `POST https://mcp.cert.sabre.com/mcp` with Seth's session token → 200. Server `ai-gateway-mcp-server 0.1.3`, protocol 2025-03-26, stateless (no session id). **10 tools** (verbatim JSON in `sabre-tools-verbatim.json`): 3 workflow tools (`SearchAndBookFlightWorkflow`, `FlightIssuedTicketManagementWorkflow`, `SearchAndBookHotelWorkflow` — each self-described as "the one and only valid entry point"), 5 OpenAPI-spec tools (`FlightShopAPI`, `FlightReshopAPI`, `BookingManagementAPI`, `HotelsSearchAPI`, `HotelPriceCheckAPI`, `HotelRatesAPI` specs), plus generic `callSabreAPI` (JSON to any path defined in the specs — this is Pipe B's lever). Token TTL unprintable (no mint step; Seth-provided session token, "won't expire during demo").
 - **[append below as work happens]**
 
 ## QUESTIONS FOR SETH (standing)
