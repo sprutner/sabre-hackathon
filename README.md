@@ -4,6 +4,8 @@
 
 **Read order if you're new:** [STATE.md](STATE.md) (single source of truth — decisions, open questions, session log) → [claude-code-spike-brief.md](claude-code-spike-brief.md) (what tonight is testing) → this file (how to run it).
 
+**Using Claude Code?** The repo ships skills in `.claude/skills/` — start with `/onboard` (orientation + stack smoke test), then `/test-call`, `/deploy`, `/sabre`, and `/wrap-up` (STATE.md + commit conventions).
+
 ## The four proofs (a chatbot has none)
 
 | # | Proof | Status tonight |
