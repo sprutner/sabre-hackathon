@@ -1,0 +1,82 @@
+# Night Desk — Friday-night spike
+
+**What this is:** the falsification spike for **Night Desk**, a drop-in after-hours voice desk for travel agencies that actually *transacts* (built at the DeepLearning.AI × Sabre × Vocal Bridge hackathon, Sat Jul 18). Tonight's repo proves/falsifies the risky parts; **the real product gets built fresh Saturday** — we carry knowledge forward, not code.
+
+**Read order if you're new:** [STATE.md](STATE.md) (single source of truth — decisions, open questions, session log) → [claude-code-spike-brief.md](claude-code-spike-brief.md) (what tonight is testing) → this file (how to run it).
+
+## The four proofs (a chatbot has none)
+
+| # | Proof | Status tonight |
+|---|-------|----------------|
+| 1 | **ACTS** — real Sabre CERT transaction end-to-end | Search LIVE (50 offers in 2.2s). Booking code ready, not yet fired (needs explicit go) |
+| 2 | **REMEMBERS** — caller context from the real app (AvoSquado DEV), no interview | Contract + both pipes built. Blocked by RLS on `profiles` (needs dev service key or deploy-on-tenant) |
+| 3 | **INITIATES** — outbound-call trigger seam | Seam built as edge function; `vb` CLI not on PATH → logs `VB_CLI_ABSENT` |
+| 4 | **ACCOUNTS** — every tool call writes an auditable row + dashboard | Schema + registry written; awaiting schema application via `migrate` function |
+
+## Architecture (post-pivot: everything callable lives on Supabase)
+
+```
+caller ⇄ PSTN ⇄ Vocal Bridge (voice layer, Avi prompt)
+                    ⇄ POST /functions/v1/agent          ← Supabase Edge Function (public URL, bearer-authed)
+                          brain: Claude Haiku 4.5, streaming, no extended thinking
+                          7 tools: lookup_reservation · search_flights · rebook_flight ·
+                                   search_hotels · place_hold · escalate · send_sms(stub)
+                          every dispatch → actions row (live flag is HONEST — SIM badges render from it)
+        Sabre CERT ⇄ direct REST (pipe B, live) or Anthropic MCP connector (pipe A)
+        AvoSquado  ⇄ avosquado-mcp (3-tool tenant MCP contract; any tenant implementing it is onboardable)
+        dashboard  ⇄ desk-data function (polls calls / actions / queue)
+```
+
+Two products, cleanly separable:
+- **`/supabase/functions/`** + **`/nightdesk/`** — the Night Desk product (edge functions are the runtime; `nightdesk/src` is the Node-flavored reference from Phases 0–2 + scripts)
+- **`/avosquado-mcp/`** — tenant-side connector (AvoSquado's product surface, survives as its own repo). Contract = 3 tools: `lookup_reservation_by_phone`, `get_trip_context`, `get_group_state`. First names only in payloads.
+
+## Environment
+
+Copy `.env` from Seth (never committed). Key vars:
+
+| Var | What / where to get it |
+|-----|------------------------|
+| `SABRE_ACCESS_TOKEN` | Long-lived CERT session token (works on both `mcp.cert.sabre.com/mcp` and `api.cert.platform.sabre.com` — no OAuth mint needed) |
+| `ANTHROPIC_API_KEY` | Brain + MCP-connector pipe. ⚠️ account needs credits |
+| `NIGHTDESK_SUPABASE_URL/_SERVICE_KEY` | Project `ppapponwxvfnmpcatyju` (Night Desk DB) |
+| `NIGHTDESK_DATABASE_URL` | Session-pooler URI (only needed for local Prisma tooling) |
+| `AVOSQUADO_DEV_SUPABASE_URL/_KEY` | skitrip-dev `umlzbhwhfcniyotnvred`. **Read-only by policy, always** — anon key can't read `profiles` (RLS), see STATE |
+| `TENANT_MCP_SHARED_SECRET` | Bearer for our own function endpoints + avosquado-mcp |
+| `VOICEBRIDGE_KEY` | Vocal Bridge API key |
+
+Hard rules: AvoSquado DB is dev/preview and SELECT-only regardless of key power. Never touch prod (`wzlrfdjpqjvguflgnauf`). No payment cards ever; refunds always escalate. Ask Seth before any Sabre **booking** call (search freely).
+
+## Run it
+
+```bash
+npm install                                  # node 20+ (machine has v24)
+
+# Local reference pipes (phases 0–2):
+npx tsx nightdesk/scripts/phase1-search.ts 2026-07-19 rest   # live Sabre search
+npx tsx avosquado-mcp/src/server.ts                          # tenant MCP on :8788/mcp
+npx tsx nightdesk/scripts/phase2-verify.ts <phone>           # contract check, both pipes
+
+# Edge functions (the real runtime):
+supabase functions deploy <fn> --project-ref ppapponwxvfnmpcatyju --no-verify-jwt
+supabase secrets set --project-ref ppapponwxvfnmpcatyju SABRE_ACCESS_TOKEN=... ANTHROPIC_API_KEY=... TENANT_MCP_SHARED_SECRET=...
+curl -X POST https://ppapponwxvfnmpcatyju.supabase.co/functions/v1/migrate \
+  -H "Authorization: Bearer $TENANT_MCP_SHARED_SECRET"        # applies schema idempotently
+curl -X POST https://ppapponwxvfnmpcatyju.supabase.co/functions/v1/agent \
+  -H "Authorization: Bearer $TENANT_MCP_SHARED_SECRET" -H "Content-Type: application/json" \
+  -d '{"tenant_id":"<uuid>","phone":"4155550100","utterance":"my flight got cancelled"}'
+```
+
+One commit per phase (`phase-N: …`) — the git log is part of the spike report.
+
+## Current blockers (who: what)
+
+1. **Anthropic credits** (Seth): key has zero balance → brain + MCP-connector pipe + haiku/sonnet stopwatch all blocked.
+2. **skitrip-dev service key** (Seth) *or* deploy `avosquado-mcp` onto the skitrip-dev project (injected service role solves it): without one, phone lookup can't see `profiles` (RLS) and the REMEMBERS proof stays broken.
+3. **Booking go/no-go** (Seth): one real CERT `createBooking` + retrieve + cancel, or stay simulated.
+4. **Demo trip shape**: "VB demo" trip = 1 member, no lodging — enrich in the app before the pitch (arc assumes a group + lodging beat).
+5. **`vb` CLI not on PATH** — outbound stays a logged seam until found.
+
+## End state tonight
+
+`SPIKE_REPORT.md` — verdict (NIGHT DESK vs CHATBOT WITH EXTRA STEPS), environment inventory, latency table, model/pipe recommendations, ranked questions, top-3 Saturday risks. If it's not in STATE.md, it didn't happen.
