@@ -16,10 +16,14 @@ const TOOLS = [
   { name: "send_sms", description: "Send the caller a confirmation SMS (stub).", input_schema: { type: "object", properties: { to: { type: "string" }, message: { type: "string" } }, required: ["to", "message"] } },
 ];
 
-function systemPrompt(tenant: any, callerPhone?: string): string {
+function systemPrompt(tenant: any, callerPhone?: string, knownOffers: any[] = []): string {
   const policy = tenant.policy ?? {};
   return [
     callerPhone ? `Caller ID (use this for lookup_reservation — do NOT ask for their number): ${callerPhone}` : "",
+    knownOffers.length
+      ? `Offers already quoted on this call (use these EXACT offer_ref values for rebook_flight — never invent one):\n` +
+        knownOffers.map((o, i) => `  option ${i + 1}: offer_ref=${o.ref} — ${o.speakable}`).join("\n")
+      : "",
     `You are Avi, the after-hours desk for ${tenant.name}. You are on a PHONE CALL — answers must be short, speakable sentences. No lists, no markdown.`,
     `Greeting style: ${tenant.greeting ?? "warm, calm, competent"}.`,
     `Policy: rebooking ceiling $${policy.rebook_ceiling_usd ?? 500} per traveler — above it, escalate. Refunds ALWAYS escalate (never promise money back yourself). No payment card handling ever.`,
@@ -38,7 +42,20 @@ async function dispatch(callId: string, tenant: any, offerCache: Map<string, any
     switch (name) {
       case "lookup_reservation": {
         if (tenant.adapter === "avosquado") {
-          result = await lookupReservationByPhone(input.phone);
+          // Consume the tenant's MCP endpoint from config — the drop-in contract path.
+          const mcpUrl = tenant.config?.integration?.url;
+          if (mcpUrl) {
+            const res = await fetch(mcpUrl, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${Deno.env.get("TENANT_MCP_SHARED_SECRET")}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "lookup_reservation_by_phone", arguments: { phone: input.phone } } }),
+            });
+            const rpc = await res.json();
+            if (rpc.error) throw new Error(`tenant mcp: ${rpc.error.message}`);
+            result = JSON.parse(rpc.result.content[0].text);
+          } else {
+            result = await lookupReservationByPhone(input.phone);
+          }
           live = true;
         } else {
           const last10 = String(input.phone).replace(/\D/g, "").slice(-10);
@@ -185,6 +202,12 @@ Deno.serve(async (req) => {
   const messages: any[] = transcript.map((t) => ({ role: t.role === "caller" ? "user" : "assistant", content: t.text }));
 
   const offerCache = new Map<string, any>();
+  // Offers quoted earlier on this call survive turn-to-turn via the offers table + system prompt.
+  let knownOffers: any[] = [];
+  try {
+    knownOffers = await select(`offers?select=ref,speakable,payload&call_id=eq.${call.id}&order=created_at.asc`);
+    for (const o of knownOffers) offerCache.set(o.ref, o.payload);
+  } catch { /* offers table optional on first boot */ }
   const usedModel = model ?? Deno.env.get("MODEL_FAST") ?? "claude-haiku-4-5-20251001";
   let ttftFirstTurn: number | null = null;
   let toolErrors = 0;
@@ -192,7 +215,7 @@ Deno.serve(async (req) => {
 
   try {
     for (let turn = 0; turn < 8; turn++) {
-      const { content, stopReason, ttft } = await claudeTurn(usedModel, systemPrompt(tenant, phone), messages);
+      const { content, stopReason, ttft } = await claudeTurn(usedModel, systemPrompt(tenant, phone, knownOffers), messages);
       if (ttftFirstTurn === null) ttftFirstTurn = ttft;
       messages.push({ role: "assistant", content });
       if (stopReason !== "tool_use") {
@@ -214,6 +237,9 @@ Deno.serve(async (req) => {
         toolCalls.push(block.name);
         const result = await dispatch(call.id, tenant, offerCache, block.name, block.input);
         if (result?.error) toolErrors++;
+        if (block.name === "search_flights" && Array.isArray(result?.offers)) {
+          for (const o of result.offers) knownOffers.push({ ref: o.offer_ref, speakable: o.speakable });
+        }
         results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
       }
       messages.push({ role: "user", content: results });

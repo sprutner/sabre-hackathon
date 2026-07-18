@@ -22,16 +22,27 @@ async function members(tripUuid: string): Promise<any[]> {
 
 export async function lookupReservationByPhone(phone: string) {
   const last10 = digits(phone).slice(-10);
-  const profs = await sel(`profiles?select=uuid,first_name,phone&phone=like.*${last10}&limit=5`);
-  const prof = profs.find((p) => digits(p.phone ?? "").endsWith(last10));
-  if (!prof) return { found: false, reason: "no profile matches that phone number" };
-  const tu = await sel(`trip_users?select=trip_uuid&user_uuid=eq.${prof.uuid}&deleted=is.false`);
-  if (!tu.length) return { found: false, reason: "no trips for caller" };
-  const trips = await sel(
-    `trips?select=uuid,trip_name,location,start_date,end_date,trip_type,created_by&uuid=in.(${tu.map((t) => t.trip_uuid).join(",")})&status=eq.active&deleted=is.false&order=start_date.asc`,
-  );
-  if (!trips.length) return { found: false, reason: "no active trips for caller" };
-  const trip = trips[0];
+  // Dev data has duplicate profiles per phone — try newest profile first, take the first
+  // that yields a current-or-upcoming trip; stale "active" trips only as last resort.
+  const profs = (await sel(`profiles?select=uuid,first_name,phone,created_at&phone=like.*${last10}&order=created_at.desc&limit=10`))
+    .filter((p) => digits(p.phone ?? "").endsWith(last10));
+  if (!profs.length) return { found: false, reason: "no profile matches that phone number" };
+
+  const now = new Date().toISOString();
+  let trip: any = null;
+  let staleFallback: any = null;
+  for (const prof of profs) {
+    const tu = await sel(`trip_users?select=trip_uuid&user_uuid=eq.${prof.uuid}&deleted=is.false`);
+    if (!tu.length) continue;
+    const trips = await sel(
+      `trips?select=uuid,trip_name,location,start_date,end_date,trip_type,created_by&uuid=in.(${tu.map((t) => t.trip_uuid).join(",")})&status=eq.active&deleted=is.false&order=start_date.asc`,
+    );
+    trip = trips.find((t) => (t.end_date ?? t.start_date) >= now);
+    if (trip) break;
+    staleFallback ??= trips[trips.length - 1];
+  }
+  trip ??= staleFallback;
+  if (!trip) return { found: false, reason: "no active trips for caller" };
   const mem = await members(trip.uuid);
   return {
     found: true,
