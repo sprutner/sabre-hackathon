@@ -1,0 +1,2835 @@
+**conversationId**: `wf_ebf892ee-3240-44c1-b3c6-266d5c130237`
+
+> **IMPORTANT:** Pass this `conversationId` to every `callSabreAPI` call AND to any other workflow tool you call later in this conversation (e.g. hotel search after flight search). This keeps all requests in one session.
+
+---
+
+openapi: 3.0.3
+info:
+  title: Flight Shop API
+  description: |
+    Flight Shop is a modern, multi-source shopping API designed to deliver the best available flight offers to travelers by aggregating content from a wide range of sources.
+  version: "1.0"
+servers:
+  - url: https://{environment}.sabre.com{basePath}
+    variables:
+      environment:
+        default: api.cert.platform
+        enum:
+          - api.cert.platform
+          - api.platform
+      basePath:
+        default: /v1/offers
+security:
+  - oauth2_authentication: []
+tags:
+  - name: flightShop
+    description: Multi-source flight shop engine.
+paths:
+  /flightShop:
+    post:
+      operationId: flightShop
+      description: Creates flight offers by retrieving content from multiple shopping sources.
+      tags:
+        - flightShop
+      requestBody:
+        description: Contains your preferred criteria for flight offer shopping.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightShopRequest'
+            examples:
+              1. One-Way Trip for Adult Passenger [Minimal]:
+                $ref: '#/components/examples/FlightShopLightMinimalRQ'
+              2. Round Trip for Adult Passenger:
+                $ref: '#/components/examples/RoundTripAdultRequest'
+              3. Virtual Interline:
+                $ref: '#/components/examples/VIRequest'
+              4. Custom Content:
+                $ref: '#/components/examples/CustomContentRequest'
+
+        required: true
+      responses:
+        '200':
+          description: Successful response, unless the `errors` array is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightShopResponse'
+              examples:
+                1. One-Way Trip for Adult Passenger:
+                  $ref: '#/components/examples/FlightShopLightMinimalRS'
+                2. Round Trip for Adult Passenger:
+                  $ref: '#/components/examples/RoundTripAdultResponse'
+                3. Virtual Interline [Snipped]:
+                  $ref: '#/components/examples/VIResponse'
+                4. Custom Content:
+                  $ref: '#/components/examples/CustomContentResponse'
+components:
+  schemas:
+    TimeWindow:
+      type: object
+      required:
+        - startTime
+        - endTime
+      properties:
+        startTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '09:15'
+          description: Defines the window starting time in `HH:MM` format.
+        endTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '13:45'
+          description: Defines the window ending time in `HH:MM` format.
+      description: Contains the period in which an event is or isn't expected to occur.
+    RequestedJourney:
+      type: object
+      required:
+        - departureLocation
+        - arrivalLocation
+        - departureDate
+      properties:
+        departureLocation:
+          $ref: '#/components/schemas/Location'
+          description: Contains a departure city or airport IATA code.
+        arrivalLocation:
+          $ref: '#/components/schemas/Location'
+          description: Contains an arrival city or airport IATA code.
+        departureDate:
+          type: string
+          format: date
+          example: '2019-07-09'
+          description: The departure date in `YYYY-MM-DD` format in the departure location's time zone.
+        departureTimeWindow:
+          $ref: '#/components/schemas/TimeWindow'
+          description: Contains a departure time window.
+        arrivalTimeWindow:
+          $ref: '#/components/schemas/TimeWindow'
+          description: Contains an arrival time window.
+      description: Contains the requested journey.
+    Location:
+      type: object
+      description: Contains either a city or airport IATA code with an optional radius.
+      oneOf:
+        - $ref: '#/components/schemas/CityCodeLocation'
+        - $ref: '#/components/schemas/AirportCodeLocation'
+    CityCodeLocation:
+      type: object
+      additionalProperties: false
+      properties:
+        radius:
+          $ref: '#/components/schemas/LocationRadius'
+          description: Contains the radius to which to extend the search from the provided location.
+        cityCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: NYC
+          description: The IATA code of a city.
+      description: Contains a city IATA code.
+    AirportCodeLocation:
+      type: object
+      additionalProperties: false
+      properties:
+        radius:
+          $ref: '#/components/schemas/LocationRadius'
+          description: Contains the radius to which to extend the search from the provided location.
+        airportCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DFW
+          description: The IATA code of an airport.
+      description: Contains an airport IATA code.
+    LocationRadius:
+      type: object
+      required:
+        - inMiles
+        - returnOnlyWithinSameCountry
+      properties:
+        inMiles:
+          type: integer
+          format: int32
+          minimum: 5
+          maximum: 100
+          example: 50
+          description: The radius distance value in miles.
+        returnOnlyWithinSameCountry:
+          type: boolean
+          default: true
+          description: If `true`, the radius search is limited to the same origin or destination country.
+      description: Contains a search radius. Can be limited to a radius value `inMiles` and `returnOnlyWithinSameCountry`.
+    RequestedRoute:
+      description: Contains additional search parameters related to the requested route.
+      type: object
+      properties:
+        maximumNumberOfStops:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 2
+          description: The maximum number of stops or connections allowed in each direction of the requested journey.
+        minimumConnectionTimeInMinutes:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 90
+          description: Minimum connection time in minutes.
+        maximumConnectionTimeInMinutes:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 180
+          description: Maximum connection time in minutes.
+        excludedConnectionTimeWindow:
+          $ref: '#/components/schemas/TimeWindow'
+          description: Contains a time window when no connection is allowed.
+    AirlineAlliancesEnum:
+      description: Identifies an airline alliance.
+      type: string
+      example: Star Alliance
+      enum:
+        - Star Alliance
+        - OneWorld
+        - Skyteam
+    RequestedAirlines:
+      type: object
+      properties:
+        marketingAirlinesFilter:
+          $ref: '#/components/schemas/AirlinesFilter'
+          description: Contains filters for marketing airlines.
+        operatingAirlinesFilter:
+          $ref: '#/components/schemas/AirlinesFilter'
+          description: Contains filters for operating airlines.
+        airlineAlliancesFilter:
+          $ref: '#/components/schemas/AirlineAlliancesFilter'
+          description: Contains preferences on airline alliances.
+      description: Contains airline filters for marketing and operating airlines.
+    AirlinesFilter:
+      description: Contains filters restricting airlines.
+      type: object
+      oneOf:
+        - type: object
+          properties:
+            airlineCodes:
+              type: array
+              description: Lists airlines to return in the response.
+              minItems: 1
+              uniqueItems: true
+              items:
+                type: string
+                description: An airline code.
+                pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+                example: AA
+          additionalProperties: false
+        - type: object
+          properties:
+            excludeAirlineCodes:
+              type: array
+              description: Lists airlines to exclude from the response.
+              minItems: 1
+              uniqueItems: true
+              items:
+                type: string
+                description: An airline code.
+                pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+                example: BA
+          additionalProperties: false
+    AirlineAlliancesFilter:
+      description: Contains filters restricting airline alliances.
+      type: object
+      oneOf:
+        - type: object
+          properties:
+            alliances:
+              type: array
+              description: Lists airline alliances to return in the response.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/AirlineAlliancesEnum'
+                example: OneWorld
+          additionalProperties: false
+        - type: object
+          properties:
+            excludeAlliances:
+              type: array
+              description: Lists airline alliances to exclude from the response.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/AirlineAlliancesEnum'
+                example: Skyteam
+          additionalProperties: false
+    Diversity:
+      type: object
+      properties:
+        numberOfNonStops:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 2
+          description: The number of non-stop solutions to return. Applicable to ATPCO.
+      description: Contains flight diversity parameters.
+    ProcessingOptions:
+      type: object
+      properties:
+        pseudoCityCode:
+          type: string
+          pattern: ^[A-Z0-9]{3,4}$
+          example: PC18
+          description: The Point of Sale identifier (PCC) to shop in.
+        configurationId:
+          type: string
+          minLength: 1
+          maxLength: 30
+          example: abc12345
+          description: Triggers the desired shopping profile and service.
+        limitNumberOfOffers:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 1000
+          example: 1000
+          description: The number of offer results to return in the response.
+        returnOneWays:
+          type: boolean
+          default: false
+          description: If `true`, returns one-way solutions in addition to full journey solutions.
+        returnVirtualInterlines:
+          type: boolean
+          default: false
+          description: If `true`, returns virtual interline solutions in addition to full journey solutions.
+      description: Contains processing options that enable special features of offer generation.
+    ContentFilter:
+      description: Contains filters used to restrict content sources.
+      type: object
+      required:
+        - provider
+        - customContents
+      properties:
+        provider:
+          description: |
+            Identifies the content provider for filtering based on provider-specific metadata.
+            Note that `customContents` filtering is currently only supported for `Third Party` providers.
+          $ref: '#/components/schemas/ProviderTypeEnum'
+        customContents:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: Lists custom metadata tags, defined and maintained by the content provider, to use as flight offer filters.
+          items:
+            $ref: '#/components/schemas/CustomContent'
+    CustomContent:
+      description: Contains a custom metadata tag to use as a flight offer filter.
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          pattern: ^[a-zA-Z0-9]{1,50}$
+          example: Key
+          description: The unique identifier key.
+        value:
+          type: string
+          pattern: ^[a-zA-Z0-9]{1,200}$
+          example: Partner
+          description: The value associated with the custom metadata key.
+    FlightShopRequest:
+      description: Contains a request to shop for flight offers.
+      type: object
+      required:
+        - journeys
+        - travelers
+      properties:
+        journeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestedJourney'
+          description: Lists traveler trip criteria.
+          minItems: 1
+        travelers:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequestedTraveler'
+          description: Lists traveler types for which the API generates offers. In the response, offers are associated to passengers from this list using the array index.
+          maxItems: 9
+          minItems: 1
+        route:
+          $ref: '#/components/schemas/RequestedRoute'
+          description: Contains qualifiers that modify the requested trip.
+        airlines:
+          $ref: '#/components/schemas/RequestedAirlines'
+          description: Contains preferred and/or non-preferred carriers that the API is expected to process and/or exclude from processing.
+        diversity:
+          $ref: '#/components/schemas/Diversity'
+          description: Contains flight diversity options.
+        fare:
+          $ref: '#/components/schemas/RequestedFare'
+          description: Contains offer price filters.
+        retailing:
+          $ref: '#/components/schemas/RequestedRetailingAttributes'
+          description: Contains qualifiers that allow you to obtain retailing features.
+        sources:
+          $ref: '#/components/schemas/SourcesFilter'
+          description: Contains providers and distribution models to filter from the final response.
+        contentFilters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentFilter'
+          description: Lists qualifiers that filter by provider-specific attributes that aren't part of the standard flight shopping criteria.
+          minItems: 1
+        processingOptions:
+          $ref: '#/components/schemas/ProcessingOptions'
+          description: Contains options that enable special features of offer generation.
+    FlightShopResponse:
+      type: object
+      description: Contains the response with flight offers returned by the API.
+      required:
+        - timestamp
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2019-09-09T09:09:09Z'
+          description: The server timestamp when the response was generated.
+        flights:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flight'
+          description: Lists available flights that match the request criteria.
+        journeys:
+          type: array
+          items:
+            $ref: '#/components/schemas/Journey'
+          description: Lists journeys with references to `flights`.
+          minItems: 1
+        taxItems:
+          type: array
+          description: Lists applicable tax or fee items.
+          items:
+            $ref: '#/components/schemas/TaxItem'
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaseOffer'
+          description: Lists offers with references to `journeys`.
+        offerAttributes:
+          $ref: '#/components/schemas/OfferAttributes'
+          description: Contains baggage and flexibility information associated with the search.
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Error'
+          description: Lists detailed error information. For a successful response, this array isn't returned.
+    CustomContentResponse:
+      type: object
+      description: Contains a custom metadata tag defined and maintained by the content provider.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          example: Connector
+          description: The unique identifier key for the custom content object.
+        value:
+          type: string
+          example: Partner
+          description: The value associated with the custom content key.
+    FlightShopFlightOffer:
+      type: object
+      description: Contains an offer, which represents a purchasable flight travel package.
+      allOf:
+        - $ref: '#/components/schemas/FlightOffer'
+        - type: object
+          properties:
+            customContents:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/CustomContentResponse'
+              description: Lists custom metadata tags defined and maintained by the content provider.
+    LoyaltyProgram:
+      type: object
+      description: Contains a definition of a flight loyalty program.
+      required:
+        - supplierCode
+        - programNumber
+      properties:
+        supplierCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The frequent-flyer vendor code. Can be a two-digit alphanumeric IATA code or a three-letter ICAO code. Applicable only to NDC.
+        programNumber:
+          type: string
+          example: '11233'
+          description: The airline frequent-flyer number. Applicable only to NDC.
+    RequestedTraveler:
+      type: object
+      required:
+        - passengerTypeCode
+      properties:
+        passengerTypeCode:
+          type: string
+          pattern: ^[0-9A-Z]{3}$
+          example: ADT
+          description: The traveler type code (passenger type code).
+        givenName:
+          type: string
+          example: John
+          description: The traveler's first name. Applicable only to NDC.
+        surname:
+          type: string
+          example: Smith
+          description: The traveler's last name. Applicable only to NDC.
+        loyaltyPrograms:
+          type: array
+          description: Lists airline loyalty programs applicable to the passenger.
+          items:
+            $ref: '#/components/schemas/LoyaltyProgram'
+            description: Contains airline frequent-flyer data. A passenger can have multiple frequent flyer codes. Applicable only to NDC.
+          minItems: 1
+      description: Contains a definition of a traveler type (passenger type).
+    CabinLogicEnum:
+      type: string
+      default: Avoid Cabin Downgrade - Main Flight
+      example: Jump Cabin
+      description: Identifies which cabin processing logic applies. `Keep Same Cabin` applies only to ATPCO and NDC.
+      enum:
+        - Jump Cabin
+        - Keep Same Cabin
+        - Avoid Cabin Downgrade - All Flights
+        - Avoid Cabin Downgrade - Main Flight
+    CabinNameEnum:
+      type: string
+      example: Economy
+      description: Identifies a cabin name for which offers should be generated.
+      enum:
+        - Premium First
+        - First
+        - Premium Business
+        - Business
+        - Premium Economy
+        - Economy
+    RequestedCabin:
+      type: object
+      properties:
+        logic:
+          $ref: '#/components/schemas/CabinLogicEnum'
+          description: Identifies which cabin processing logic applies.
+        name:
+          $ref: '#/components/schemas/CabinNameEnum'
+          description: Identifies the aircraft cabin in which the API should generate offers.
+      description: Contains the preferred cabin type.
+      additionalProperties: false
+    CabinPerJourneyPreferences:
+      type: object
+      required:
+        - name
+        - journeyIndices
+      properties:
+        name:
+          $ref: '#/components/schemas/CabinNameEnum'
+          description: Identifies the aircraft cabin in which the API should generate offers.
+        journeyIndices:
+          type: array
+          items:
+            type: integer
+            format: int32
+            example: 1
+            description: The index of a journey.
+            minimum: 0
+          description: Lists the indices of the journeys within the `journeys` array to which the selected cabin type applies.
+          minItems: 1
+      description: Contains the preferred cabin type that the API applies to the selected journeys.
+    RequestedCabinPerJourney:
+      type: object
+      properties:
+        logic:
+          $ref: '#/components/schemas/CabinLogicEnum'
+          description: Identifies which cabin processing logic applies.
+        preferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/CabinPerJourneyPreferences'
+            description: Contains the preferred cabin type name.
+          description: Lists preferred cabin types that can be selected within each journey.
+          minItems: 1
+      description: Contains the preferred cabin type that the API applies per journey selection.
+      additionalProperties: false
+    FareCabin:
+      type: object
+      description: Contains qualifiers with cabin preferences and cabin processing logic.
+      oneOf:
+        - $ref: '#/components/schemas/RequestedCabin'
+          description: Contains the preferred cabin type that the API applies globally.
+        - $ref: '#/components/schemas/RequestedCabinPerJourney'
+          description: Contains the preferred cabin type that the API applies per journey selection.
+    DistributionModelTypeEnum:
+      type: string
+      example: ATPCO
+      description: Identifies a distribution model or systems or companies that host carrier APIs from which offers are expected.
+      enum:
+        - ATPCO
+        - API
+        - NDC
+    FareProgramTypeEnum:
+      type: string
+      default: Account Code
+      description: Identifies the source of a code for which the traveler may have fares filed. Can be an ATPCO `Account Code`, a Sabre `Corporate Id`, or an NDC `Company Id`.
+      enum:
+        - Account Code
+        - Corporate Id
+        - Company Id
+    FareProgram:
+      type: object
+      required:
+        - distributionModels
+        - type
+        - values
+      properties:
+        distributionModels:
+          type: array
+          items:
+            $ref: '#/components/schemas/DistributionModelTypeEnum'
+          uniqueItems: true
+          description: List distribution models of the fare programs.
+          minItems: 1
+        type:
+          $ref: '#/components/schemas/FareProgramTypeEnum'
+          description: Identifies the fare program type associated with the distribution model. Allows the API to generate offers with fares filed with this type.
+        values:
+          type: array
+          maxItems: 25
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            description: A value associated to `type`.
+            example: ACC33
+          description: Lists values associated to the qualifier's `type`.
+        companyIdType:
+          type: string
+          example: ABN
+          description: The type of company ID. Applicable only to NDC.
+        airlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The airline or vendor account code. Mandatory for NDC.
+      description: Contains programs that agencies and airlines use for fare filing purposes. These are usually private fares available to a limited number of customers.
+    RequestedFare:
+      type: object
+      description: Contains offer price filters.
+      properties:
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter currency code in the ISO 4217 standard preferred for retrieving monetary values.
+        cabin:
+          $ref: '#/components/schemas/FareCabin'
+          description: Contains the cabin name and cabin processing logic.
+        forcePassengerType:
+          type: boolean
+          default: false
+          description: If `true`, returns fares matching the requested passenger code on all fare components.
+        validateInterlineTicketingAgreement:
+          type: boolean
+          default: false
+          description: If `true`, processes Interline Ticketing Agreements. Applicable only to ATPCO.
+        validatingAirlineCodes:
+          type: array
+          items:
+            type: string
+            pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+            example: AA
+            description: The IATA code of an airline.
+          uniqueItems: true
+          description: Lists allowed validating carriers. Applicable only to ATPCO, pre-charged.
+          minItems: 1
+        programs:
+          type: array
+          items:
+            $ref: '#/components/schemas/FareProgram'
+          description: Lists fare programs for different distribution models and their corresponding qualifiers.
+          minItems: 1
+        returnTaxBreakdown:
+          type: boolean
+          description: If `true`, returns an itemized breakdown of taxes and fees for each offer when available. A detailed tax and fee breakdown is only guaranteed for offers originating from the ATPCO distribution model and provided by Sabre. For other offers, this information may be unavailable and omitted in the response.
+          default: false
+          example: false
+    RetailingOfferAttributesEnum:
+      type: string
+      description: Identifies a characteristic of an airline product.
+      enum:
+        - Baggage
+        - Flexibility
+        - Carbon Emissions
+    RetailingOfferAttributesFilter:
+      type: object
+      properties:
+        hasFreeBaggage:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include free baggage. Any fares that don't include at least one free bag are excluded from the search.
+        hasFreeCarryOnBaggage:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include free carry-on baggage.
+        hasFreeRefund:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include a free refund.
+        hasFreeChange:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include a free exchange.
+        isRefundAllowed:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include refund capabilities.
+        isChangeAllowed:
+          type: boolean
+          default: false
+          example: true
+          description: If `true`, returns only fare options that include exchange capabilities.
+      description: Contains retailing attributes that you can use to refine a flight search.
+    ReturnAdditionalOffers:
+      type: object
+      properties:
+        numberOfAdditionalOffers:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 11
+          default: 4
+          description: The number of additional offer solutions to return.
+      description: Contains the number of additional offer solutions to return.
+    RequestedRetailingAttributes:
+      type: object
+      properties:
+        returnOfferAttributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetailingOfferAttributesEnum'
+          uniqueItems: true
+          description: Lists airline product characteristics that together form a unique offer.
+          minItems: 1
+        filterByOfferAttributes:
+          $ref: '#/components/schemas/RetailingOfferAttributesFilter'
+          description: Contains retailing attribute filters that you can use to refine a flight search.
+        returnAdditionalOffers:
+          $ref: '#/components/schemas/ReturnAdditionalOffers'
+          description: Contains the number of additional offer solutions to return per journey.
+      description: Contains retailing attributes to decorate the response with.
+    ProviderTypeEnum:
+      type: string
+      example: Sabre
+      description: Identifies the data source provider from whom offers are expected.
+      enum:
+        - Sabre
+        - Direct
+        - Third Party
+    SourcesFilter:
+      type: object
+      description: Contains providers and distribution models to filter from or to include in the final response.
+      oneOf:
+        - type: object
+          properties:
+            providers:
+              type: array
+              description: Lists providers to return offers from.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/ProviderTypeEnum'
+            distributionModels:
+              type: array
+              description: Lists distribution models to return offers from.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/DistributionModelTypeEnum'
+          additionalProperties: false
+        - type: object
+          properties:
+            excludeProviders:
+              type: array
+              description: Lists providers to exclude from the response.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/ProviderTypeEnum'
+            excludeDistributionModels:
+              type: array
+              description: Lists distribution models to exclude from the response.
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/DistributionModelTypeEnum'
+          additionalProperties: false
+    HiddenStop:
+      type: object
+      required:
+        - airportCode
+      properties:
+        airportCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DFW
+          description: The three-letter IATA airport code of the stopover point.
+        arrivalDate:
+          type: string
+          format: date
+          example: '2024-01-26'
+          description: The arrival date in the airport time zone.
+        arrivalTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '15:00'
+          description: The arrival time in the airport time zone.
+        departureDate:
+          type: string
+          format: date
+          example: '2024-01-26'
+          description: The departure date in the airport time zone.
+        departureTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '17:55'
+          description: The departure time in the airport time zone.
+        durationInMinutes:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 90
+          description: Stop duration in minutes.
+        hasChangeOfGauge:
+          type: boolean
+          default: false
+          description: If `true`, a change of aircraft is required.
+        aircraftTypeCode:
+          type: string
+          pattern: ^[0-9A-Z]{3}$
+          example: '346'
+          description: The IATA code of the aircraft type.
+      description: Contains details of a hidden stop in a flight.
+    Flight:
+      type: object
+      description: Contains details of a flight.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: bf74c8ee-393a-45c8-8f15-a27fa6395050
+          description: The ID of the flight.
+        departureAirportCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: DFW
+          description: The three-letter IATA code of the departure airport.
+        departureDate:
+          type: string
+          format: date
+          example: '2024-01-26'
+          description: The departure date in the airport time zone.
+        departureTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '17:55'
+          description: The departure time in the airport time zone.
+        arrivalAirportCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: FRA
+          description: The three-letter IATA code of the arrival airport.
+        arrivalDate:
+          type: string
+          format: date
+          example: '2024-01-26'
+          description: The arrival date in the airport time zone.
+        arrivalTime:
+          type: string
+          pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          example: '15:00'
+          description: The arrival time in the airport time zone.
+        operatingAirlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The IATA code of the operating carrier.
+        operatingFlightNumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9999
+          example: 1001
+          description: The operating carrier flight number.
+        marketingAirlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The IATA code of the marketing carrier.
+        marketingFlightNumber:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9999
+          example: 1001
+          description: The marketing carrier flight number.
+        disclosureAirlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The disclosure carrier code or name.
+        aircraftTypeCode:
+          type: string
+          pattern: ^[0-9A-Z]{3}$
+          example: '346'
+          description: The IATA code of the aircraft type.
+        durationInMinutes:
+          type: integer
+          format: int32
+          example: 90
+          description: Flight duration in minutes.
+        hiddenStops:
+          type: array
+          items:
+            $ref: '#/components/schemas/HiddenStop'
+          description: Lists hidden stops during the flight in chronological order.
+    Journey:
+      type: object
+      description: Contains a portion of travel. A round trip consists of two journeys (for example, outbound and inbound).
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: ccc04ff0-d5ce-4314-9cbc-f01ec6bb91ab
+          description: The ID of the journey.
+        flightRefs:
+          type: array
+          items:
+            type: string
+            format: uuid
+            example: bf74c8ee-393a-45c8-8f15-a27fa6395050
+            description: The ID of a flight.
+          description: Lists flight references for the journey.
+          minItems: 1
+        requestedJourneyIndex:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 0
+          description: The zero-based index matching the journey in the request.
+    TaxItem:
+      type: object
+      required:
+        - id
+        - taxCode
+        - amount
+        - currencyCode
+      description: Contains a tax or fee item.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The ID of the tax item.
+          example: 7af78393-6d45-3d22-856d-3f6c515d6652
+        taxCode:
+          type: string
+          pattern: ^[A-Z]{1}[A-Z,0-9]{1,2}$
+          description: The tax code.
+          example: QX
+        amount:
+          type: string
+          format: number
+          description: The tax or fee amount.
+          example: '16.04'
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: The three-letter ISO 4217 currency code associated with the charge.
+          example: USD
+        publishedAmount:
+          description: The tax or fee amount as originally published.
+          type: string
+          format: number
+          example: '15.54'
+        publishedCurrencyCode:
+          description: The three-letter ISO 4217 currency code associated with `publishedAmount`.
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: EUR
+        taxDescription:
+          description: The name of the tax or fee.
+          type: string
+          example: PASSENGER SERVICE CHARGE INTERNATIONAL
+        airportCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: The IATA code of the airport at which the tax is applicable.
+          example: CDG
+        taxCountry:
+          type: string
+          pattern: ^[A-Z]{2}$
+          description: The ISO 3166 code of the country that levies the tax. Not applicable to carrier-imposed fees.
+          example: FR
+    BaseOffer:
+      type: object
+      description: Contains an offer, which represents a purchasable flight travel package.
+      discriminator:
+        propertyName: type
+        mapping:
+          FlightOffer: '#/components/schemas/FlightOffer'
+          VirtualInterlineOffer: '#/components/schemas/VirtualInterlineOffer'
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferAttributes'
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              description: Lists items within the offer that aren't already included in the price of the itinerary, such as flights or ancillaries.
+              items:
+                $ref: '#/components/schemas/BaseOfferItem'
+    FlightOffer:
+      type: object
+      description: Contains a purchasable flight travel package.
+      allOf:
+        - $ref: '#/components/schemas/BaseOffer'
+        - type: object
+          properties:
+            refundabilityRef:
+              type: string
+              format: uuid
+              example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+              description: The ID of a refundability attribute associated with the offer.
+            changeRef:
+              type: string
+              format: uuid
+              example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+              description: The ID of a change attribute associated with the offer.
+            additionalOffersRefs:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                description: The ID of a reference offer.
+                example: 123eww323
+              uniqueItems: true
+              description: Lists the IDs of reference offers or upsells that are similar to the offer contained in this object.
+              example:
+                - 123eww323
+    VirtualInterlineOffer:
+      type: object
+      description: Contains a virtual interline offer, which represents a purchasable flight travel package.
+      allOf:
+        - $ref: '#/components/schemas/BaseOffer'
+    ProviderTypeResponseEnum:
+      type: string
+      default: Unknown
+      example: Sabre
+      description: Identifies a data source provider from whom offers are expected.
+      enum:
+        - Sabre
+        - Direct
+        - Third Party
+        - Unknown
+    DistributionModelTypeResponseEnum:
+      type: string
+      default: Unknown
+      example: ATPCO
+      description: Identifies a distribution model or systems or companies that host carrier APIs from which offers are expected.
+      enum:
+        - ATPCO
+        - API
+        - NDC
+        - Mixed
+        - Unknown
+    CommercialModelTypeResponseEnum:
+      type: string
+      default: Unknown
+      example: Connect
+      description: Identifies a distribution model or systems or companies that host carrier APIs from which offers are expected.
+      enum:
+        - Connect
+        - Unknown
+    Source:
+      description: Contains the origin of an offer.
+      type: object
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderTypeResponseEnum'
+          description: Identifies the data provider.
+        supplier:
+          type: string
+          example: VA
+          description: The identifier of the data supplier.
+        distributionModel:
+          $ref: '#/components/schemas/DistributionModelTypeResponseEnum'
+          description: Identifies the data distribution model.
+        commercialModel:
+          $ref: '#/components/schemas/CommercialModelTypeResponseEnum'
+          description: Identifies the data commercial model.
+    TotalPrice:
+      type: object
+      required:
+        - amount
+        - currencyCode
+      properties:
+        amount:
+          type: string
+          format: number
+          minimum: 0
+          example: '33.30'
+          description: Defines a total amount.
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with `amount`.
+      description: Contains the total price of all offer items within an offer.
+    BaseOfferAttributes:
+      type: object
+      description: Contains the basic parameters of an offer, which represents a purchasable flight travel package.
+      required:
+        - type
+        - id
+        - createdAt
+        - validUntil
+        - source
+        - totalPrice
+      properties:
+        type:
+          type: string
+          example: FlightOffer
+          description: The offer subtype.
+        id:
+          type: string
+          example: 123eww324
+          description: The ID of the offer.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The exact point in time when the offer was created, expressed in UTC. Depends on the data source that was used for the search.
+        validUntil:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The exact point in time when the offer expires, expressed in UTC.
+        source:
+          $ref: '#/components/schemas/Source'
+          description: Contains the origin of the offer.
+        totalPrice:
+          $ref: '#/components/schemas/TotalPrice'
+          description: Contains the total price of all mandatory offer items.
+        paymentTimeLimit:
+          type: string
+          format: date-time
+          example: '2020-10-28T11:11:21.125Z'
+          description: The date by which a commitment to pay for the confirmed offer items must be made.
+        applicableToPseudoCityCodes:
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Z0-9]{3,4}$
+            example: KF8C
+            description: A PCC code.
+          description: Lists PCCs that the offer applies to.
+        journeyRefs:
+          type: array
+          items:
+            type: string
+            description: The ID of a journey.
+            format: uuid
+            example: ccc04ff0-d5ce-4314-9cbc-f01ec6bb91ab
+          description: Lists IDs of journeys that the offer applies to.
+          minItems: 1
+    BaseOfferItem:
+      type: object
+      description: Contains the basic details of an offer item.
+      discriminator:
+        propertyName: type
+        mapping:
+          FlightOfferItem: '#/components/schemas/FlightOfferItem'
+          VirtualInterlineOfferItem: '#/components/schemas/VirtualInterlineOfferItem'
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferItemAttributes'
+    ReturnedTraveler:
+      type: object
+      required:
+        - passengerTypeCode
+        - requestedTravelerIndex
+      properties:
+        id:
+          type: string
+          example: Passenger1
+          description: The ID of the passenger used to generate the offer.
+        passengerTypeCode:
+          type: string
+          pattern: ^[0-9A-Z]{3}$
+          example: ADT
+          description: The passenger type used to generate the offer.
+        requestedTravelerIndex:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 0
+          description: The zero-based index of the traveler from the request for whom the offer was generated.
+      description: Contains a traveler type for which fares were generated, along with the index of the passenger from the request.
+    Fares:
+      type: object
+      properties:
+        equivalentFare:
+          type: string
+          format: number
+          minimum: 0
+          example: '16.74'
+          description: The net fare amount.
+        taxAmount:
+          type: string
+          format: number
+          minimum: 0
+          example: '16.56'
+          description: The total tax amount.
+        amount:
+          type: string
+          format: number
+          minimum: 0
+          example: '33.30'
+          description: The total amount, including flight fare, taxes and surcharges.
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with amounts.
+      description: Contains a total fare price, including taxes and surcharges.
+    PrivateFareIndicatorEnum:
+      type: string
+      example: Has Program Code
+      description: Identifies a type of private fare.
+      enum:
+        - Has Program Code
+        - Ineligible For Ticketing
+        - Any
+    CabinNameResponseEnum:
+      type: string
+      default: Unknown
+      example: Economy
+      description: Identifies the cabin for which the API generated offers.
+      enum:
+        - Premium First
+        - First
+        - Premium Business
+        - Business
+        - Premium Economy
+        - Economy
+        - Unknown
+    FareComponentSegmentDetail:
+      type: object
+      required:
+        - flightRef
+      properties:
+        flightRef:
+          type: string
+          format: uuid
+          example: bf74c8ee-393a-45c8-8f15-a27fa6395050
+          description: The ID of the flight.
+        bookingClassCode:
+          type: string
+          pattern: ^[A-Z]{1,2}$
+          example: M
+          description: The Reservation Booking Designator (booking code) applicable to the journey segment for which the fare was calculated.
+        cabinName:
+          $ref: '#/components/schemas/CabinNameResponseEnum'
+          description: Identifies the cabin name associated with the journey segment for which the fare was calculated.
+        checkedBaggageRef:
+          type: string
+          format: uuid
+          example: df58f912-7c38-416b-b97b-d73a8676f52c
+          description: The ID of the checked baggage attribute associated with the fare component.
+        carryOnBaggageRef:
+          type: string
+          format: uuid
+          example: 75af09b1-ca5e-4b9b-a754-3297f516d147
+          description: The ID of the carry-on baggage attribute associated with the fare component.
+        carbonEmissionsInGramsPerPassenger:
+          type: integer
+          format: int64
+          example: 667557
+          description: Carbon emissions from the fare cabin calculated in grams per passenger.
+      description: Contains details of a fare component associated with a specific segment of the journey.
+    FareBrand:
+      type: object
+      properties:
+        code:
+          type: string
+          example: BASICECON
+          description: The code of the brand.
+        name:
+          type: string
+          example: BASIC ECONOMY
+          description: The name of the brand.
+        programId:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 372463
+          description: The brand program ID.
+      description: Contains the brand associated with a fare component.
+    MarkupTypeEnum:
+      type: string
+      description: Identifies a fare markup type.
+      enum:
+        - Cat35
+        - Other
+      example: Cat35
+    Markup:
+      type: object
+      description: Contains the markup applied to a fare component.
+      required:
+        - type
+        - amount
+        - currencyCode
+      properties:
+        type:
+          description: Identifies the fare markup type.
+          $ref: '#/components/schemas/MarkupTypeEnum'
+        amount:
+          description: The markup amount.
+          type: string
+          format: number
+          example: '15.00'
+        fareAmountAfterMarkup:
+          description: The fare amount with the markup applied.
+          type: string
+          format: number
+          example: '1215.00'
+        currencyCode:
+          description: The three-letter ISO 4217 currency code associated with the amounts.
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+    FareComponent:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: number
+          minimum: 0
+          example: '1.86'
+          description: The net amount of the fare component.
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with `amount`.
+        publishedAmount:
+          type: string
+          format: number
+          minimum: 0
+          example: '1.86'
+          description: The published net amount of the fare component.
+        publishedCurrencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with `publishedAmount`.
+        exchangeRate:
+          type: string
+          format: number
+          minimum: 0
+          example: '1.00000'
+          description: The exchange rate used to convert the construction fare amount published in the neutral unit of currency (NUC) to a published fare amount in the local currency of the trip origin.
+          exclusiveMinimum: true
+        fareBasisCode:
+          type: string
+          example: W7C1V2
+          description: The fare basis associated with the fare component.
+        accountCode:
+          type: string
+          example: ACC33
+          description: The account code associated with the fare component.
+        corporateIds:
+          type: array
+          items:
+            type: string
+            description: A corporate ID.
+            example: ACC33
+          description: Lists corporate IDs associated with the fare component.
+          minItems: 1
+        segmentDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/FareComponentSegmentDetail'
+          description: Lists segments associated with the fare component.
+          minItems: 1
+        brand:
+          $ref: '#/components/schemas/FareBrand'
+          description: Contains the brand associated with the fare component.
+        markups:
+          type: array
+          description: Lists markup items applied to the fare component.
+          items:
+            $ref: '#/components/schemas/Markup'
+        refundabilityRef:
+          type: string
+          format: uuid
+          example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+          description: The ID of the refundability attribute associated with the fare component.
+        changeRef:
+          type: string
+          format: uuid
+          example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+          description: The ID of the change attribute associated with the fare component.
+      description: Contains a component of the fare calculated for a given itinerary.
+    CommissionTypesEnum:
+      type: string
+      description: Identifies a commission type.
+      enum:
+        - Cat35
+        - Other
+      example: Cat35
+    Commissions:
+      type: object
+      description: Contains a negotiated commission originating from ATPCO Category 35 or other source.
+      required:
+        - type
+        - amount
+        - currencyCode
+      properties:
+        type:
+          description: Identifies the commission type.
+          $ref: '#/components/schemas/CommissionTypesEnum'
+        percentage:
+          description: The commission percentage. Returned only for percentage-based commissions.
+          type: string
+          format: number
+          example: '1.00'
+        amount:
+          description: The commission amount.
+          type: string
+          format: number
+          example: '43.24'
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          description: The three-letter ISO 4217 currency code associated with the commission.
+          example: SGD
+    FareDetail:
+      type: object
+      required:
+        - travelers
+        - fareTotal
+        - fareComponents
+      properties:
+        travelers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReturnedTraveler'
+          description: Lists traveler types the fare is associated with.
+          minItems: 1
+        fareTotal:
+          $ref: '#/components/schemas/Fares'
+          description: Contains the total fare amount, including taxes and surcharges.
+        privateFare:
+          $ref: '#/components/schemas/PrivateFareIndicatorEnum'
+          description: Identifies the type of private fare.
+        validatingAirlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The IATA code of the validating carrier.
+        fareComponents:
+          type: array
+          items:
+            $ref: '#/components/schemas/FareComponent'
+          description: Lists fare components used to compute the fare.
+          minItems: 1
+        commissions:
+          type: array
+          description: Lists commissions applied to the fare.
+          items:
+            $ref: '#/components/schemas/Commissions'
+        taxItemRefs:
+          type: array
+          description: Lists IDs of taxes and fees included in `fareTotal`.
+          items:
+            type: string
+            format: uuid
+            description: The ID of a tax or fee.
+            example: 7af78393-6d45-3d22-856d-3f6c515d6652
+        refundabilityRef:
+          type: string
+          format: uuid
+          example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+          description: The ID of the refundability attribute associated with the fare.
+        changeRef:
+          type: string
+          format: uuid
+          example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+          description: The ID of the change attribute associated with the fare.
+      description: Contains a fare breakdown per traveler type. Multiple passengers of the same type are represented with a single `FareDetail` object. Passengers of different types require a separate `FareDetail` object per passenger type.
+    FlightOfferItem:
+      type: object
+      description: Contains information on a flight offer item.
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferItem'
+        - type: object
+          required:
+            - fares
+          properties:
+            fares:
+              type: array
+              items:
+                $ref: '#/components/schemas/FareDetail'
+              description: Lists fare details for the flight offer item.
+              minItems: 1
+            isPartial:
+              type: boolean
+              default: false
+              description: If `true`, the offer item covers only a part of the trip for one-way or multi-ticket travel.
+    VirtualInterlineOfferItem:
+      type: object
+      description: Contains information on a virtual interline offer item.
+      allOf:
+        - $ref: '#/components/schemas/BaseOfferItem'
+        - type: object
+          required:
+            - offerRefs
+          properties:
+            offerRefs:
+              type: array
+              minItems: 2
+              items:
+                type: string
+                description: The ID of a virtual interline offer.
+              uniqueItems: true
+              description: Lists the IDs of associated virtual interline offers.
+              example:
+                - 123eww323
+                - 123eww324
+    BaseOfferItemAttributes:
+      type: object
+      description: Contains the basic details of an offer item.
+      required:
+        - type
+        - id
+        - isMandatory
+      properties:
+        type:
+          type: string
+          example: FlightOfferItem
+          description: The subtype of the offer item.
+        id:
+          type: string
+          example: 123eww324-1-1
+          description: The ID of the offer item. Used in the next steps of the Offer/Order workflow.
+        isMandatory:
+          type: boolean
+          default: true
+          description: If `true`, the offer item is mandatory and can't be removed from the offer. Mandatory offer items transition into order items. If `false`, the offer item is optional. Applicable for ATPCO and NDC content.
+    BaggageItemDefinition:
+      type: object
+      properties:
+        weightInKilograms:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 23
+          description: The baggage weight in kilograms.
+        weightInPounds:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 50
+          description: The baggage weight in pounds.
+        sizeInInches:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 18
+          description: The baggage size in inches.
+        sizeInCentimeters:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 45
+          description: The baggage size in centimeters.
+        lengthInInches:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 18
+          description: The baggage length in inches.
+        lengthInCentimeters:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 45
+          description: The baggage length in centimeters.
+        heightInInches:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 14
+          description: The baggage height in inches.
+        heightInCentimeters:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 35
+          description: The baggage height in centimeters.
+        widthInInches:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 8
+          description: The baggage width in inches.
+        widthInCentimeters:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 20
+          description: The baggage width in centimeters.
+        description:
+          type: array
+          items:
+            type: string
+            description: A baggage item description.
+            example: UP TO 50 POUNDS/23 KILOGRAMS
+          description: Lists baggage item descriptions in free-text format.
+      description: Contains a baggage item that's included in the free baggage allowance or subject to baggage charges.
+    BaggageAllowances:
+      type: object
+      properties:
+        numberOfPieces:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 1
+          description: The maximum number of pieces that are allowed free of charge.
+        bagDefinition:
+          $ref: '#/components/schemas/BaggageItemDefinition'
+          description: Contains the baggage item that's allowed free of charge.
+        maximumWeightInKilograms:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 30
+          description: The maximum total baggage weight in kilograms, applicable if the carrier doesn't define the limit in terms of pieces.
+        maximumWeightInPounds:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 30
+          description: The maximum total baggage weight in pounds, applicable if the carrier doesn't define the limit in terms of pieces.
+        airlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The IATA code of the airline whose baggage provision applies.
+      description: Contains baggage that a traveler can take with them free of charge.
+    BaggageCharges:
+      type: object
+      properties:
+        firstPiece:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 1
+          description: The start point of the inclusive `[firstPiece, lastPiece]` range for which the charge applies. The count starts from the first item that exceeds the free baggage allowance.
+        lastPiece:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 2
+          description: The end point of the inclusive `[firstPiece, lastPiece]` range for which the charge applies. The count starts from the first item that exceeds the free baggage allowance.
+        bagDefinition:
+          $ref: '#/components/schemas/BaggageItemDefinition'
+          description: Contains the baggage item to which the charge applies.
+        amount:
+          type: string
+          format: number
+          minimum: 0
+          example: '128.00'
+          description: The amount payable per baggage item.
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with `amount`.
+        airlineCode:
+          type: string
+          pattern: ^([A-Z0-9]{2}|[A-Z]{3})$
+          example: AA
+          description: The IATA code of the airline whose baggage provision applies.
+      description: Contains a baggage charge for items that aren't part of the baggage allowance.
+    Baggage:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: df58f912-7c38-416b-b97b-d73a8676f52c
+          description: The ID of the baggage attribute.
+        allowances:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaggageAllowances'
+          description: Lists baggage allowances applicable per portion of travel.
+        charges:
+          type: array
+          items:
+            $ref: '#/components/schemas/BaggageCharges'
+          description: Lists baggage charges applicable per portion of travel.
+      description: Contains baggage provisions, including free allowance for checked and carry-on baggage and charges for excess baggage items.
+    FlexibilityRule:
+      type: object
+      required:
+        - isPermitted
+      properties:
+        isPermitted:
+          type: boolean
+          example: true
+          description: If `true`, ticket change and refund are permitted for a given fare, either free of charge (charge equals `0`) or with a fee.
+        maxCharge:
+          type: string
+          format: number
+          minimum: 0
+          example: '14.00'
+          description: The maximum cost of a ticket change or refund in a given fare.
+        minCharge:
+          type: string
+          format: number
+          minimum: 0
+          example: '7.00'
+          description: The minimum cost of a ticket change or refund in a given fare.
+        currencyCode:
+          type: string
+          pattern: ^[A-Z]{3}$
+          example: USD
+          description: The three-letter ISO 4217 currency code associated with the charge.
+      description: Contains conditions of voluntary changes and refunds as well as applicable fees.
+    RefundChangeCharges:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: c693e9b2-1782-45f9-82f6-73f8cdd13cfa
+          description: The ID of the attribute.
+        beforeDeparture:
+          $ref: '#/components/schemas/FlexibilityRule'
+          description: Contains change charges applicable before departure.
+        afterDeparture:
+          $ref: '#/components/schemas/FlexibilityRule'
+          description: Contains change charges applicable after departure.
+      description: Contains information about refund or change charges.
+    OfferAttributes:
+      type: object
+      properties:
+        checkedBaggageItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/Baggage'
+          uniqueItems: true
+          description: Lists information about checked baggage.
+          minItems: 1
+        carryOnBaggageItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/Baggage'
+          uniqueItems: true
+          description: Lists information about carry-on baggage.
+          minItems: 1
+        refundabilityItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefundChangeCharges'
+          uniqueItems: true
+          description: Lists information about refund charges.
+          minItems: 1
+        changeItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefundChangeCharges'
+          uniqueItems: true
+          description: Lists information about change charges.
+          minItems: 1
+      description: Contains baggage and flexibility information.
+    Error:
+      type: object
+      required:
+        - category
+        - type
+      properties:
+        category:
+          type: string
+          example: BAD_REQUEST
+          description: A high-level grouping of errors indicating what kind of (client-side or server-side) problem occurred.
+        type:
+          type: string
+          example: REQUIRED_FIELD_MISSING
+          description: An application-specific error type, or one from the list of typical Sabre API errors.
+        description:
+          type: string
+          example: Client did not provide required data. See fieldName for the item expected in the request.
+          description: A human-readable description of what went wrong with enough information that a software developer can use to debug the problem.
+        fieldName:
+          type: string
+          example: currencyCode
+          description: Additional information to help debug the error. For example, the name of the parameter missing from a request payload.
+        fieldPath:
+          type: string
+          example: currencyCode
+          description: Additional information to help debug the error. For example, the name of the parameter missing from a request payload.
+        fieldValue:
+          type: string
+          example: field value
+          description: The source of the error.
+  examples:
+    FlightShopLightMinimalRQ:
+      description: |
+        ##### Scenario
+        This example represents a simple use case for the Flight Shop API. We will request non-stop flight offers for one set of `journeys` (one-way trip) by specifying the `departureDate` and `passengerTypeCode`.
+        ##### Instruction
+        For a one-way trip, we need to provide the following information:
+
+        | Parameter | Description |
+        | :--- | ---: |
+        | `journeys.departureLocation.airportCode`| The three-letter IATA code of the airport where the flight departs. |
+        | `journeys.arrivalLocation.airportCode` | The three-letter IATA code of the airport where the flight arrives. |
+        | `journeys.departureDate` | Local date when the flight is scheduled to depart. |
+        | `travelers.passengerTypeCode` | The three-character ATPCO passenger type code. |
+      value:
+        {
+          "journeys": [
+            {
+              "departureLocation": {
+                "airportCode": "CDG"
+              },
+              "arrivalLocation": {
+                "airportCode": "BER"
+              },
+              "departureDate": "2025-07-09"
+            }
+          ],
+          "travelers": [
+            {
+              "passengerTypeCode": "ADT"
+            }
+          ]
+        }
+    RoundTripAdultRequest:
+      description: |
+        ##### Scenario
+        This example presents a simple use case with additional filter and information parameters. We will request flight offers for two sets of `journeys` (round trip), and we will also specify the airline the passenger wants to travel with by providing the airline's IATA code under `airlines`.
+        ##### Instruction
+        In addition to the `airlines` object, the minimal information we must provide in the request is as follows:
+
+        | Parameter | Description |
+        | :--- | ---: |
+        | `journeys.departureLocation.airportCode` | The three-letter IATA code of the airport where the flight departs. |
+        | `journeys.arrivalLocation.airportCode` | The three-letter IATA code of the airport where the flight arrives. |
+        | `journeys.departureDate` | Local date when the flight is scheduled to depart. |
+        | `travelers.passengerTypeCode` | The three-character ATPCO passenger type code. |
+      value:
+        {
+          "journeys": [
+            {
+              "departureLocation": {
+                "cityCode": "NYC"
+              },
+              "arrivalLocation": {
+                "radius": {
+                  "inMiles": 50,
+                  "returnOnlyWithinSameCountry": true
+                },
+                "cityCode": "BUR"
+              },
+              "departureDate": "2025-07-09",
+              "departureTimeWindow": {
+                "startTime": "00:15",
+                "endTime": "23:45"
+              },
+              "arrivalTimeWindow": {
+                "startTime": "00:15",
+                "endTime": "23:45"
+              }
+            },
+            {
+              "departureLocation": {
+                "cityCode": "BUR"
+              },
+              "arrivalLocation": {
+                "radius": {
+                  "inMiles": 50,
+                  "returnOnlyWithinSameCountry": true
+                },
+                "cityCode": "NYC"
+              },
+              "departureDate": "2025-07-13",
+              "departureTimeWindow": {
+                "startTime": "00:15",
+                "endTime": "23:45"
+              },
+              "arrivalTimeWindow": {
+                "startTime": "00:15",
+                "endTime": "23:45"
+              }
+            }
+          ],
+          "travelers": [
+            {
+              "passengerTypeCode": "ADT",
+              "givenName": "John",
+              "surname": "Smith",
+              "loyaltyPrograms": [
+                {
+                  "supplierCode": "AA",
+                  "programNumber": "11233"
+                }
+              ]
+            }
+          ],
+          "route": {
+            "maximumNumberOfStops": 2,
+            "minimumConnectionTimeInMinutes": 90,
+            "maximumConnectionTimeInMinutes": 180,
+            "excludedConnectionTimeWindow": {
+              "startTime": "09:15",
+              "endTime": "13:45"
+            }
+          },
+          "airlines": {
+            "marketingAirlinesFilter": {
+              "airlineCodes": [
+                "AA"
+              ]
+            },
+            "operatingAirlinesFilter": {
+              "airlineCodes": [
+                "AA"
+              ]
+            },
+            "airlineAlliancesFilter": {
+              "alliances": [
+                "Star Alliance"
+              ]
+            }
+          },
+          "diversity": {
+            "numberOfNonStops": 2
+          },
+          "fare": {
+            "currencyCode": "USD",
+            "cabin": {
+              "logic": "Jump Cabin",
+              "name": "Economy"
+            },
+            "forcePassengerType": false,
+            "validateInterlineTicketingAgreement": false,
+            "validatingAirlineCodes": [
+              "AA"
+            ],
+            "programs": [
+              {
+                "distributionModels": [
+                  "ATPCO"
+                ],
+                "type": "Account Code",
+                "values": [
+                  "ACC33"
+                ],
+                "companyIdType": "ABN",
+                "airlineCode": "AA"
+              }
+            ],
+            "returnTaxBreakdown": true
+          },
+          "retailing": {
+            "returnOfferAttributes": [
+              "Baggage",
+              "Flexibility",
+              "Carbon Emissions"
+            ],
+            "filterByOfferAttributes": {
+              "hasFreeBaggage": true,
+              "hasFreeCarryOnBaggage": true,
+              "hasFreeRefund": true,
+              "hasFreeChange": true,
+              "isRefundAllowed": true,
+              "isChangeAllowed": true
+            },
+            "returnAdditionalOffers": {
+              "numberOfAdditionalOffers": 4
+            }
+          },
+          "sources": {
+            "providers": [
+              "Sabre"
+            ],
+            "distributionModels": [
+              "ATPCO",
+              "NDC",
+              "API"
+            ]
+          },
+          "processingOptions": {
+            "pseudoCityCode": "ABC1",
+            "configurationId": "abc12345",
+            "limitNumberOfOffers": 1,
+            "returnOneWays": false,
+            "returnVirtualInterlines": false
+          }
+        }
+
+    VIRequest:
+      description: |
+        ##### Scenario
+        This example presents a simple use case to retrieve virtual interline offers. We will request flight offers for two sets of `journeys` (round trip), and we will also use the `returnVirtualInterlines` parameter to instruct the API to return virtual interline offers.
+        ##### Instruction
+        In addition to the `returnVirtualInterlines` parameter, the minimal information we must provide in the request is as follows:
+
+        | Parameter | Description |
+        | :--- | ---: |
+        | `journeys.departureLocation.airportCode` | The three-letter IATA code of the airport where the flight departs. |
+        | `journeys.arrivalLocation.airportCode` | The three-letter IATA code of the airport where the flight arrives. |
+        | `journeys.departureDate` | Local date when the flight is scheduled to depart. |
+        | `travelers.passengerTypeCode` | The three-character ATPCO passenger type code. |
+      value:
+        {
+          "journeys": [
+            {
+              "departureLocation": {
+                "airportCode": "EWR"
+              },
+              "arrivalLocation": {
+                "airportCode": "CDG"
+              },
+              "departureDate": "2025-06-11"
+            },
+            {
+              "departureLocation": {
+                "airportCode": "CDG"
+              },
+              "arrivalLocation": {
+                "airportCode": "EWR"
+              },
+              "departureDate": "2025-06-14"
+            }
+          ],
+          "travelers": [
+            {
+              "passengerTypeCode": "ADT"
+            }
+          ],
+          "processingOptions": {
+            "returnVirtualInterlines": true
+          },
+          "fare": {
+            "returnTaxBreakdown": false
+          },
+          "sources": {
+            "providers": [
+              "Third Party"
+            ]
+          }
+        }
+
+    CustomContentRequest:
+      description: |
+        ##### Scenario
+        This example shows a use case with content filters for a third-party provider.
+        We will request flight offers for a one-way trip with specific custom content tags associated.
+        ##### Instruction
+        We need to include the following parameters in our request:
+
+        | Parameter | Description |
+        | :--- | ---: |
+        | `journeys.departureLocation.airportCode` | The three-letter IATA code of the airport where the flight departs. |
+        | `journeys.arrivalLocation.airportCode` | The three-letter IATA code of the airport where the flight arrives. |
+        | `journeys.departureDate` | Local date when the flight is scheduled to depart. |
+        | `travelers.passengerTypeCode` | The three-character ATPCO passenger type code. |
+        | `contentFilters.provider` | Identifies the content provider. |
+        | `contentFilters.customContents` |  Lists metadata tags that offers returned in the response must include for the chosen provider. |
+      value:
+        {
+          "journeys": [
+            {
+              "departureLocation": {
+                "airportCode": "CDG"
+              },
+              "arrivalLocation": {
+                "airportCode": "JFK"
+              },
+              "departureDate": "2025-06-11"
+            }
+          ],
+          "travelers": [
+            {
+              "passengerTypeCode": "ADT"
+            }
+          ],
+          "contentFilters": [
+            {
+              "provider": "Third Party",
+              "customContents":
+                [
+                  {
+                    "key": "Connector",
+                    "value": "Partner"
+                  }
+                ]
+            }
+          ]
+        }
+
+    RoundTripAdultResponse:
+      description: |
+        ##### Summary
+        The API returned matching offers for the parameters we requested.
+        These offers include traveler details, the fare, attributes corresponding to the referenced tax items, and journeys and flights.
+
+        The response breaks down this information into dedicated sections:
+          - `flights`
+          - `journeys`
+          - `taxItems`
+          - `offers`
+          - `offerAttributes`
+
+        ##### Next Steps
+        Data returned by the Flight Shop API can be used within the Order Management API, designed to streamline and unify the booking and post-booking processes across multiple travel content sources (air, lodging).
+      value:
+        {
+          "timestamp": "2025-06-10T11:56:25.412Z",
+          "flights": [
+            {
+              "id": "ebf40fc9-067f-4d14-a2ec-88d1974f99bb",
+              "departureAirportCode": "DFW",
+              "departureDate": "2025-07-09",
+              "departureTime": "18:50",
+              "arrivalAirportCode": "BUR",
+              "arrivalDate": "2025-07-09",
+              "arrivalTime": "19:59",
+              "operatingAirlineCode": "AA",
+              "operatingFlightNumber": 2597,
+              "marketingAirlineCode": "AA",
+              "marketingFlightNumber": 2597,
+              "aircraftTypeCode": "738",
+              "durationInMinutes": 189
+            },
+            {
+              "id": "23dd2ec3-9d44-4ee5-a036-ed01486c519a",
+              "departureAirportCode": "EWR",
+              "departureDate": "2025-07-09",
+              "departureTime": "13:10",
+              "arrivalAirportCode": "DFW",
+              "arrivalDate": "2025-07-09",
+              "arrivalTime": "15:55",
+              "operatingAirlineCode": "AA",
+              "operatingFlightNumber": 1796,
+              "marketingAirlineCode": "AA",
+              "marketingFlightNumber": 1796,
+              "aircraftTypeCode": "738",
+              "durationInMinutes": 225
+            }
+          ],
+          "journeys": [
+            {
+              "id": "df768090-e8d7-4563-8984-9ae7cf4d17eb",
+              "flightRefs": [
+                "23dd2ec3-9d44-4ee5-a036-ed01486c519a",
+                "ebf40fc9-067f-4d14-a2ec-88d1974f99bb"
+              ],
+              "requestedJourneyIndex": 0
+            }
+          ],
+          "taxItems": [
+            {
+              "id": "c02781b8-a4e6-4e35-9a91-48e07cf9c0e6",
+              "taxCode": "US1",
+              "amount": "56.39",
+              "currencyCode": "USD",
+              "publishedAmount": "56.39",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "TRANSPORTATION TAX DOMESTIC WHOLLY WITHIN US AND 225 MILE BUFFER ZONE",
+              "airportCode": "EWR",
+              "taxCountry": "US"
+            },
+            {
+              "id": "e280c8c3-5843-4d24-91e8-be42989e099e",
+              "taxCode": "XF",
+              "amount": "4.50",
+              "currencyCode": "USD",
+              "publishedAmount": "4.50",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "PASSENGER FACILITY CHARGE",
+              "airportCode": "DFW",
+              "taxCountry": "US"
+            },
+            {
+              "id": "0e898e63-1698-4239-95bf-2532774bd380",
+              "taxCode": "ZP",
+              "amount": "5.20",
+              "currencyCode": "USD",
+              "publishedAmount": "5.20",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "FLIGHT SEGMENT TAX DOMESTIC",
+              "airportCode": "DFW",
+              "taxCountry": "US"
+            },
+            {
+              "id": "fb86bc42-e600-4125-8f73-470129989c49",
+              "taxCode": "XF",
+              "amount": "4.50",
+              "currencyCode": "USD",
+              "publishedAmount": "4.50",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "PASSENGER FACILITY CHARGE",
+              "airportCode": "EWR",
+              "taxCountry": "US"
+            },
+            {
+              "id": "5143eea2-5a46-4de0-bbb0-9b8f92e464ef",
+              "taxCode": "AY",
+              "amount": "5.60",
+              "currencyCode": "USD",
+              "publishedAmount": "5.60",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "PASSENGER CIVIL AVIATION SECURITY SERVICE FEE",
+              "airportCode": "EWR",
+              "taxCountry": "US"
+            },
+            {
+              "id": "e84395a5-f008-4cbe-8700-6951649c1e49",
+              "taxCode": "ZP",
+              "amount": "5.20",
+              "currencyCode": "USD",
+              "publishedAmount": "5.20",
+              "publishedCurrencyCode": "USD",
+              "taxDescription": "FLIGHT SEGMENT TAX DOMESTIC",
+              "airportCode": "EWR",
+              "taxCountry": "US"
+            }
+          ],
+          "offers": [
+            {
+              "type": "FlightOffer",
+              "id": "47d75547-06b8-47ac-bd2c-78a8cc77ef1e",
+              "createdAt": "2025-06-10T11:56:25Z",
+              "validUntil": "2025-06-10T12:16:25.363Z",
+              "source": {
+                "provider": "Sabre",
+                "distributionModel": "ATPCO",
+                "commercialModel": "Unknown"
+              },
+              "totalPrice": {
+                "amount": "833.19",
+                "currencyCode": "USD"
+              },
+              "items": [
+                {
+                  "type": "FlightOfferItem",
+                  "fares": [
+                    {
+                      "travelers": [
+                        {
+                          "passengerTypeCode": "ADT",
+                          "requestedTravelerIndex": 0
+                        }
+                      ],
+                      "fareTotal": {
+                        "equivalentFare": "751.80",
+                        "taxAmount": "81.39",
+                        "amount": "833.19",
+                        "currencyCode": "USD"
+                      },
+                      "validatingAirlineCode": "AA",
+                      "fareComponents": [
+                        {
+                          "amount": "751.63",
+                          "currencyCode": "USD",
+                          "publishedAmount": "751.63",
+                          "publishedCurrencyCode": "USD",
+                          "exchangeRate": "1.00000",
+                          "fareBasisCode": "OVAHURI5",
+                          "segmentDetails": [
+                            {
+                              "flightRef": "23dd2ec3-9d44-4ee5-a036-ed01486c519a",
+                              "bookingClassCode": "I",
+                              "cabinName": "First",
+                              "checkedBaggageRef": "1a943c4a-0e7d-4478-8f4b-60279524e5db",
+                              "carryOnBaggageRef": "811a49a7-ad31-47ce-8973-bedb8818ec00",
+                              "carbonEmissionsInGramsPerPassenger": 213945
+                            },
+                            {
+                              "flightRef": "ebf40fc9-067f-4d14-a2ec-88d1974f99bb",
+                              "bookingClassCode": "I",
+                              "cabinName": "First",
+                              "checkedBaggageRef": "1a943c4a-0e7d-4478-8f4b-60279524e5db",
+                              "carryOnBaggageRef": "811a49a7-ad31-47ce-8973-bedb8818ec00",
+                              "carbonEmissionsInGramsPerPassenger": 205014
+                            }
+                          ],
+                          "brand": {
+                            "code": "FIRFL",
+                            "name": "FIRST FLEXIBLE",
+                            "programId": 392596
+                          }
+                        }
+                      ],
+                      "taxItemRefs": [
+                        "5143eea2-5a46-4de0-bbb0-9b8f92e464ef",
+                        "c02781b8-a4e6-4e35-9a91-48e07cf9c0e6",
+                        "e84395a5-f008-4cbe-8700-6951649c1e49",
+                        "0e898e63-1698-4239-95bf-2532774bd380",
+                        "fb86bc42-e600-4125-8f73-470129989c49",
+                        "e280c8c3-5843-4d24-91e8-be42989e099e"
+                      ],
+                      "refundabilityRef": "5a50d608-08f6-47e4-9c94-628792654a71",
+                      "changeRef": "aa209887-eba0-4441-b4e0-6941b01bec6f"
+                    }
+                  ],
+                  "isPartial": false,
+                  "id": "dummy-a9b90ef8-d165-47c7-ab83-6df42d967159",
+                  "isMandatory": true
+                }
+              ],
+              "paymentTimeLimit": "2025-06-11T23:59:00Z",
+              "applicableToPseudoCityCodes": [
+                "ABC1"
+              ],
+              "journeyRefs": [
+                "df768090-e8d7-4563-8984-9ae7cf4d17eb"
+              ]
+            }
+          ],
+          "offerAttributes": {
+            "checkedBaggageItems": [
+              {
+                "id": "1a943c4a-0e7d-4478-8f4b-60279524e5db",
+                "allowances": [
+                  {
+                    "numberOfPieces": 2,
+                    "bagDefinition": {
+                      "description": [
+                        "UP TO 70 POUNDS/32 KILOGRAMS",
+                        "UP TO 62 LINEAR INCHES/158 LINEAR CENTIMETERS"
+                      ]
+                    },
+                    "airlineCode": "AA"
+                  }
+                ]
+              }
+            ],
+            "carryOnBaggageItems": [
+              {
+                "id": "811a49a7-ad31-47ce-8973-bedb8818ec00",
+                "allowances": [
+                  {
+                    "numberOfPieces": 1,
+                    "bagDefinition": {
+                      "description": [
+                        "UP TO 40 LINEAR INCHES/101 LINEAR CENTIMETERS"
+                      ]
+                    },
+                    "airlineCode": "AA"
+                  },
+                  {
+                    "numberOfPieces": 1,
+                    "bagDefinition": {
+                      "description": [
+                        "UP TO 45 LINEAR INCHES/115 LINEAR CENTIMETERS"
+                      ]
+                    },
+                    "airlineCode": "AA"
+                  }
+                ]
+              }
+            ],
+            "refundabilityItems": [
+              {
+                "id": "5a50d608-08f6-47e4-9c94-628792654a71",
+                "beforeDeparture": {
+                  "isPermitted": true,
+                  "maxCharge": "0.00",
+                  "minCharge": "0.00",
+                  "currencyCode": "USD"
+                },
+                "afterDeparture": {
+                  "isPermitted": true,
+                  "maxCharge": "0.00",
+                  "minCharge": "0.00",
+                  "currencyCode": "USD"
+                }
+              }
+            ],
+            "changeItems": [
+              {
+                "id": "aa209887-eba0-4441-b4e0-6941b01bec6f",
+                "beforeDeparture": {
+                  "isPermitted": true,
+                  "maxCharge": "0.00",
+                  "minCharge": "0.00",
+                  "currencyCode": "USD"
+                },
+                "afterDeparture": {
+                  "isPermitted": true,
+                  "maxCharge": "0.00",
+                  "minCharge": "0.00",
+                  "currencyCode": "USD"
+                }
+              }
+            ]
+          }
+        }
+
+    VIResponse:
+      description: |
+        ##### Summary
+        The API returned matching offers for the parameters we requested.
+        These offers include traveler details, the fare, attributes corresponding to the referenced tax items, and journeys and flights.
+
+        The response breaks down this information into dedicated sections:
+          - `flights`
+          - `journeys`
+          - `taxItems`
+          - `offers`
+          - `offerAttributes`
+        
+        >**Note**: This example is a snipped part of a full virtual interline response. Due to its large size, we present only abridged parts of the returned virtual interline offers.
+
+        ##### Next Steps
+        Data returned by the Flight Shop API can be used within the Order Management API, designed to streamline and unify the booking and post-booking processes across multiple travel content sources (air, lodging).
+      value:
+        {
+          "timestamp": "2025-06-10T12:18:02.564Z",
+          "flights": [
+            {
+              "id": "ded68423-32a2-4813-bcce-d71f116bf1d5",
+              "departureAirportCode": "UQE",
+              "departureDate": "2025-06-11",
+              "departureTime": "02:40",
+              "arrivalAirportCode": "CAI",
+              "arrivalDate": "2025-06-11",
+              "arrivalTime": "04:00",
+              "operatingAirlineCode": "FR",
+              "operatingFlightNumber": 3518,
+              "marketingAirlineCode": "FR",
+              "marketingFlightNumber": 4004,
+              "disclosureAirlineCode": "FR",
+              "aircraftTypeCode": "A32",
+              "durationInMinutes": 80
+            },
+            {
+              "id": "69f3995d-8bba-4542-a742-0a8daeef3c71",
+              "departureAirportCode": "ISB",
+              "departureDate": "2025-06-11",
+              "departureTime": "00:00",
+              "arrivalAirportCode": "ELA",
+              "arrivalDate": "2025-06-11",
+              "arrivalTime": "01:20",
+              "operatingAirlineCode": "LH",
+              "operatingFlightNumber": 6100,
+              "marketingAirlineCode": "LH",
+              "marketingFlightNumber": 5488,
+              "disclosureAirlineCode": "LH",
+              "aircraftTypeCode": "A32",
+              "durationInMinutes": 80
+            },
+            {
+              "id": "93aafb84-6955-498f-b280-e74c9c692d3d",
+              "departureAirportCode": "CAI",
+              "departureDate": "2025-06-14",
+              "departureTime": "00:00",
+              "arrivalAirportCode": "ISB",
+              "arrivalDate": "2025-06-14",
+              "arrivalTime": "04:00",
+              "operatingAirlineCode": "FR",
+              "operatingFlightNumber": 3502,
+              "marketingAirlineCode": "FR",
+              "marketingFlightNumber": 5202,
+              "disclosureAirlineCode": "FR",
+              "aircraftTypeCode": "A32",
+              "durationInMinutes": 240
+            }
+
+          ],
+          "journeys": [
+            {
+              "id": "8a1c2191-e706-429e-ad95-ffee4d8d32a2",
+              "flightRefs": [
+                "93aafb84-6955-498f-b280-e74c9c692d3d"
+              ],
+              "requestedJourneyIndex": 1
+            }
+          ],
+          "offers": [
+            {
+              "type": "VirtualInterlineOffer",
+              "id": "21752321-66a5-4764-8a07-ad0fd48c301c",
+              "createdAt": "2025-06-09T15:04:33.505655369Z",
+              "validUntil": "2025-06-09T15:24:33.485Z",
+              "source": {
+                "provider": "Sabre",
+                "distributionModel": "Mixed",
+                "commercialModel": "Unknown"
+              },
+              "totalPrice": {
+                "amount": "1494.02",
+                "currencyCode": "USD"
+              },
+              "items": [
+                {
+                  "type": "VirtualInterlineOfferItem",
+                  "offerRefs": [
+                    "02761ae4-173a-412c-9234-e2c8d978fc16",
+                    "3f8c9913-cd26-498d-bb4a-95d326191214",
+                    "490cf7ab-844f-4f07-9e20-e9dff00df282"
+                  ],
+                  "id": "21752321-66a5-4764-8a07-ad0fd48c301c-1-1",
+                  "isMandatory": true
+                }
+              ],
+              "paymentTimeLimit": "2025-06-10T00:37:58.076144906Z",
+              "journeyRefs": [
+                "6b8e13c0-e618-47ff-9447-cf337f89e54a",
+                "f011e163-98ea-4e64-9a4d-b60d36500159"
+              ]
+            },
+            {
+              "type": "VirtualInterlineOffer",
+              "id": "30873609-54f8-4ddc-b75b-ea86baf59a90",
+              "createdAt": "2025-06-09T15:04:33.505655369Z",
+              "validUntil": "2025-06-09T15:24:33.485Z",
+              "source": {
+                "provider": "Sabre",
+                "distributionModel": "Mixed",
+                "commercialModel": "Unknown"
+              },
+              "totalPrice": {
+                "amount": "1523.91",
+                "currencyCode": "USD"
+              },
+              "items": [
+                {
+                  "type": "VirtualInterlineOfferItem",
+                  "offerRefs": [
+                    "02761ae4-173a-412c-9234-e2c8d978fc16",
+                    "d42d5c95-141f-44fb-825d-f2645ff2f3e9",
+                    "490cf7ab-844f-4f07-9e20-e9dff00df282"
+                  ],
+                  "id": "30873609-54f8-4ddc-b75b-ea86baf59a90-1-1",
+                  "isMandatory": true
+                }
+              ],
+              "paymentTimeLimit": "2025-06-10T00:37:58.076144906Z",
+              "journeyRefs": [
+                "258f51bc-4c61-484f-859f-7aff09d577b7",
+                "f011e163-98ea-4e64-9a4d-b60d36500159"
+              ]
+            }
+          ]
+        }
+
+    FlightShopLightMinimalRS:
+      description: |
+        ##### Summary
+        The API returned matching offers for the parameters we requested.
+        These offers include traveler details, the fare, attributes corresponding to the referenced tax items, and journeys and flights.
+
+        The response breaks down this information into dedicated sections:
+          - `flights`
+          - `journeys`
+          - `taxItems`
+          - `offers`
+          - `offerAttributes`
+
+        ##### Next Steps
+        Data returned by the Flight Shop API can be used within the Order Management API, designed to streamline and unify the booking and post-booking processes across multiple travel content sources (air, lodging).
+      value:
+        {
+          "timestamp": "2025-06-06T11:05:01.414Z",
+          "flights": [
+            {
+              "id": "0582c4a8-46f5-42f5-b61f-7d2a36779246",
+              "departureAirportCode": "JFK",
+              "departureDate": "2025-06-06",
+              "departureTime": "20:25",
+              "arrivalAirportCode": "KEF",
+              "arrivalDate": "2025-06-07",
+              "arrivalTime": "06:15",
+              "operatingAirlineCode": "FI",
+              "operatingFlightNumber": 614,
+              "marketingAirlineCode": "FI",
+              "marketingFlightNumber": 614,
+              "aircraftTypeCode": "76W",
+              "durationInMinutes": 350
+            },
+            {
+              "id": "54214c2b-992c-4225-a16e-092f211e9d3b",
+              "departureAirportCode": "KEF",
+              "departureDate": "2025-06-07",
+              "departureTime": "07:40",
+              "arrivalAirportCode": "LHR",
+              "arrivalDate": "2025-06-07",
+              "arrivalTime": "11:55",
+              "operatingAirlineCode": "FI",
+              "operatingFlightNumber": 450,
+              "marketingAirlineCode": "FI",
+              "marketingFlightNumber": 450,
+              "aircraftTypeCode": "32Q",
+              "durationInMinutes": 195
+            }
+          ],
+          "journeys": [
+            {
+              "id": "2fd3ca9d-7b99-40a9-b081-895756c2e7d6",
+              "flightRefs": [
+                "0582c4a8-46f5-42f5-b61f-7d2a36779246",
+                "54214c2b-992c-4225-a16e-092f211e9d3b"
+              ],
+              "requestedJourneyIndex": 0
+            }
+          ],
+          "offers": [
+            {
+              "type": "FlightOffer",
+              "id": "cbbf9ce5-5a5a-4031-a8fa-14bdb7239670",
+              "createdAt": "2025-06-06T10:05:01.412Z",
+              "validUntil": "2025-06-06T11:25:01.412Z",
+              "source": {
+                "provider": "Sabre",
+                "distributionModel": "ATPCO",
+                "commercialModel": "Unknown"
+              },
+              "totalPrice": {
+                "amount": "812.40",
+                "currencyCode": "USD"
+              },
+              "items": [
+                {
+                  "type": "FlightOfferItem",
+                  "fares": [
+                    {
+                      "travelers": [
+                        {
+                          "passengerTypeCode": "ADT",
+                          "requestedTravelerIndex": 0
+                        }
+                      ],
+                      "fareTotal": {
+                        "equivalentFare": "239.00",
+                        "taxAmount": "186.20",
+                        "amount": "425.20",
+                        "currencyCode": "USD"
+                      },
+                      "validatingAirlineCode": "FI",
+                      "fareComponents": [
+                        {
+                          "amount": "189.00",
+                          "currencyCode": "NUC",
+                          "publishedAmount": "189.00",
+                          "publishedCurrencyCode": "USD",
+                          "exchangeRate": "1.00000",
+                          "fareBasisCode": "OP1QUSLT",
+                          "segmentDetails": [
+                            {
+                              "flightRef": "0582c4a8-46f5-42f5-b61f-7d2a36779246",
+                              "bookingClassCode": "O",
+                              "cabinName": "Economy"
+                            },
+                            {
+                              "flightRef": "54214c2b-992c-4225-a16e-092f211e9d3b",
+                              "bookingClassCode": "O",
+                              "cabinName": "Economy"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "travelers": [
+                        {
+                          "passengerTypeCode": "CNN",
+                          "requestedTravelerIndex": 1
+                        }
+                      ],
+                      "fareTotal": {
+                        "equivalentFare": "201.00",
+                        "taxAmount": "186.20",
+                        "amount": "387.20",
+                        "currencyCode": "USD"
+                      },
+                      "validatingAirlineCode": "FI",
+                      "fareComponents": [
+                        {
+                          "amount": "151.20",
+                          "currencyCode": "NUC",
+                          "publishedAmount": "151.00",
+                          "publishedCurrencyCode": "USD",
+                          "exchangeRate": "1.00000",
+                          "fareBasisCode": "OP1QUSLTCH",
+                          "segmentDetails": [
+                            {
+                              "flightRef": "0582c4a8-46f5-42f5-b61f-7d2a36779246",
+                              "bookingClassCode": "O",
+                              "cabinName": "Economy"
+                            },
+                            {
+                              "flightRef": "54214c2b-992c-4225-a16e-092f211e9d3b",
+                              "bookingClassCode": "O",
+                              "cabinName": "Economy"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "isPartial": false,
+                  "id": "dummy-22d693b3-8963-4e4d-8ad6-1bbbe249e0fe",
+                  "isMandatory": true
+                }
+              ],
+              "paymentTimeLimit": "2025-06-06T20:25:00Z",
+              "journeyRefs": [
+                "2fd3ca9d-7b99-40a9-b081-895756c2e7d6"
+              ]
+            }
+          ]
+        }
+
+    CustomContentResponse:
+      description: |
+        ##### Summary
+        The API returned matching offers for the parameters we requested, including content filters for a third-party provider.
+        These offers include traveler details, `customContents`, the fare, attributes corresponding to the referenced tax items, and journeys and flights.
+
+        The response breaks down this information into dedicated sections:
+          - `flights`
+          - `journeys`
+          - `taxItems`
+          - `offers`
+          - `offerAttributes`
+
+        ##### Next Steps
+        Data returned by the Flight Shop API can be used within the Order Management API, designed to streamline and unify the booking and post-booking processes across multiple travel content sources (air, lodging).
+
+      value:
+        {
+          "timestamp": "2025-12-11T11:16:37.688Z",
+          "flights": [
+            {
+              "id": "148c172c-5a43-4c76-b6ef-92b390ed6204",
+              "departureAirportCode": "CAI",
+              "departureDate": "2025-12-12",
+              "departureTime": "16:00",
+              "arrivalAirportCode": "KWI",
+              "arrivalDate": "2025-12-12",
+              "arrivalTime": "19:25",
+              "operatingAirlineCode": "MS",
+              "operatingFlightNumber": 620,
+              "marketingAirlineCode": "MS",
+              "marketingFlightNumber": 620,
+              "aircraftTypeCode": "738",
+              "durationInMinutes": 145
+            }
+          ],
+          "journeys": [
+            {
+              "id": "966d2771-dc1a-45a8-b2d7-e36d57a87f75",
+              "flightRefs": [
+                "148c172c-5a43-4c76-b6ef-92b390ed6204"
+              ],
+              "requestedJourneyIndex": 0
+            }
+          ],
+          "offers": [
+            {
+              "type": "FlightOffer",
+              "id": "a3dc20d7-4b32-40a4-a2c7-977b0ae5d303",
+              "createdAt": "2025-12-11T08:16:37.685Z",
+              "validUntil": "2025-12-11T11:36:37.684Z",
+              "source": {
+                "provider": "Third Party",
+                "distributionModel": "API"
+              },
+              "totalPrice": {
+                "amount": "6102.00",
+                "currencyCode": "EGP"
+              },
+              "items": [
+                {
+                  "type": "FlightOfferItem",
+                  "fares": [
+                    {
+                      "travelers": [
+                        {
+                          "passengerTypeCode": "ADT",
+                          "requestedTravelerIndex": 0
+                        }
+                      ],
+                      "fareTotal": {
+                        "equivalentFare": "419.00",
+                        "taxAmount": "5683.00",
+                        "amount": "6102.00",
+                        "currencyCode": "EGP"
+                      },
+                      "validatingAirlineCode": "MS",
+                      "fareComponents": [
+                        {
+                          "amount": "8.84",
+                          "currencyCode": "NUC",
+                          "publishedAmount": "419.00",
+                          "publishedCurrencyCode": "EGP",
+                          "fareBasisCode": "UU3RIO77",
+                          "segmentDetails": [
+                            {
+                              "flightRef": "148c172c-5a43-4c76-b6ef-92b390ed6204",
+                              "bookingClassCode": "U",
+                              "cabinName": "Economy"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "isPartial": false,
+                  "id": "398cab6b-6d2f-4941-b13e-c12f6e0e3369",
+                  "isMandatory": true
+                }
+              ],
+              "paymentTimeLimit": "2025-12-12T16:00:00Z",
+              "journeyRefs": [
+                "966d2771-dc1a-45a8-b2d7-e36d57a87f75"
+              ],
+              "customContents": [
+                {
+                  "key": "Connector",
+                  "value": "Partner"
+                }
+              ]
+            }
+          ]
+        }
+  securitySchemes:
+    oauth2_authentication:
+      type: oauth2
+      x-base64-encode-client-credentials: true
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.cert.platform.sabre.com/v2/auth/token
+          scopes: {}
+x-lingo-api-type: rpc
