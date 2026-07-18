@@ -1,0 +1,90 @@
+// Night Desk schema — Prisma flavor of the brief's SQL (+ offers table from the
+// canonical-model decision). Applied with `prisma db push` (idempotent).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model tenants {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String?
+  greeting    String?
+  policy      Json?
+  adapter     String?
+  channel     String? @default("pstn")
+  config      Json?
+  vb_agent_id String?
+}
+
+model clients {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id String? @db.Uuid
+  name      String?
+  phone     String? @unique
+  email     String?
+}
+
+model reservations {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String? @db.Uuid
+  client_id   String? @db.Uuid
+  adapter_ref String?
+  summary     Json?
+  group_size  Int?    @default(1)
+  room_config Json?
+  status      String? @default("active")
+}
+
+model calls {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id  String?   @db.Uuid
+  client_id  String?   @db.Uuid
+  direction  String?
+  started_at DateTime? @default(now()) @db.Timestamptz(6)
+  ended_at   DateTime? @db.Timestamptz(6)
+  transcript Json?     @default("[]")
+  status     String?   @default("live")
+}
+
+model actions {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  call_id    String?   @db.Uuid
+  type       String?
+  payload    Json?
+  result     Json?
+  live       Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model holds {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id String?   @db.Uuid
+  kind           String?
+  details        Json?
+  expires_at     DateTime? @db.Timestamptz(6)
+}
+
+model queue {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String? @db.Uuid
+  call_id     String? @db.Uuid
+  reason      String?
+  context     Json?
+  status      String? @default("open")
+  promised_by String?
+}
+
+model offers {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  call_id     String?   @db.Uuid
+  kind        String?
+  ref         String?
+  speakable   String?
+  payload     Json?
+  valid_until DateTime? @db.Timestamptz(6)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+}
